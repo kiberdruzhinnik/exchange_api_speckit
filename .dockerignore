@@ -9,3 +9,4 @@ specs
 .env*
 coverage/
 tests/
+.git/

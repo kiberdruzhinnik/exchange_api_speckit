@@ -1,6 +1,6 @@
 use exchange_api::{
     AppState, cache_store::CacheStore, config::AppConfig, http::router, moex::client::MoexClient,
-    shutdown::run_until_shutdown,
+    shutdown::run_until_shutdown, spbex::client::SpbexClient,
 };
 use std::{future::IntoFuture, time::Duration};
 use tokio::net::TcpListener;
@@ -16,13 +16,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.moex_max_response_bytes,
         config.moex_max_history_bytes,
     )?;
+    let spbex = SpbexClient::new(
+        &config.spbex_api_base_url,
+        config.upstream_timeout,
+        config.spbex_max_response_bytes,
+    )?;
     let store = CacheStore::open(
         &config.history_cache_db_path,
         config.history_cache_max_bytes,
     )
     .await?;
-    let app = router(AppState::with_store(
+    let app = router(AppState::with_services_and_store(
         moex,
+        spbex,
         config.history_cache_ttl,
         config.history_cache_max_bytes,
         store,

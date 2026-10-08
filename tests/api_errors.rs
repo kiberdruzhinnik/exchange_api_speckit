@@ -19,6 +19,25 @@ async fn maps_history_store_failure_to_service_unavailable() {
 }
 
 #[tokio::test]
+async fn keeps_spbex_and_history_store_errors_distinct_in_json_envelope() {
+    use axum::response::IntoResponse;
+    let spbex =
+        exchange_api::http::errors::ApiError::Spbex(anyhow::anyhow!("upstream unavailable"))
+            .into_response();
+    assert_eq!(spbex.status(), StatusCode::BAD_GATEWAY);
+    let spbex_body = axum::body::to_bytes(spbex.into_body(), 4096).await.unwrap();
+    let spbex_json: serde_json::Value = serde_json::from_slice(&spbex_body).unwrap();
+    assert_eq!(spbex_json["error"]["code"], "spbex_unavailable");
+
+    let store =
+        exchange_api::http::errors::ApiError::Store("sqlite unavailable".into()).into_response();
+    assert_eq!(store.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let store_body = axum::body::to_bytes(store.into_body(), 4096).await.unwrap();
+    let store_json: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    assert_eq!(store_json["error"]["code"], "history_store_unavailable");
+}
+
+#[tokio::test]
 async fn rejects_malformed_symbols() {
     let server = MockServer::start().await;
     let client = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(1)).unwrap();

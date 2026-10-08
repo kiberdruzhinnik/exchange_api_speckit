@@ -1,0 +1,166 @@
+openapi: 3.1.0
+info:
+  title: SPBEX Ticker History API
+  version: 1.0.0
+  description: Returns public SPBEX daily chart history and the latest available daily candle. History survives application restarts for its freshness period. Quote requests always fetch SPBEX data. Under normal operating conditions (10 concurrent clients issuing 10 requests per second total), at least 95% of successful responses from each route must complete in under one second end to end; this is a hard acceptance gate.
+  license:
+    name: UNLICENSED
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /
+paths:
+  /v1/spbex/{SYMBOL}:
+    get:
+      operationId: getSpbexTickerHistory
+      summary: Get daily history for an SPBEX ticker
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: Daily candles ordered oldest to newest. Successful empty data is an empty array. `volume` is null because the chart feed does not provide it; `facevalue` is 1.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyMarketRecord'
+              example:
+                - date: '2013-03-25T00:00:00Z'
+                  close: 73.35
+                  high: 75.05
+                  low: 73.21
+                  volume: null
+                  facevalue: 1
+        '400':
+          description: The symbol is malformed or the source explicitly reports it as unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: SPBEX failed or returned malformed, oversized, or unusable data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The history response could not be read from or persisted to the history store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/spbex/{SYMBOL}/quote:
+    get:
+      operationId: getSpbexTickerLatestCandle
+      summary: Get the latest available daily candle for an SPBEX ticker
+      description: Fetches the public SPBEX chart feed on every request and returns its newest available daily candle. It starts with a recent range and expands the range when empty until a candle is found or the full available range has been checked. The response is never read from or written to a cache. An empty result across the full available range returns one record with nullable market fields.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: One latest daily candle record, or one all-null market record when the successful feed contains no candles across the full available range.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestCandleQuoteRecord'
+              example:
+                - date: '2026-10-08T00:00:00Z'
+                  close: 73.35
+                  high: 75.05
+                  low: 73.21
+                  volume: null
+                  facevalue: 1
+        '400':
+          description: The symbol is malformed or the source explicitly reports it as unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: SPBEX failed or returned malformed, oversized, or unusable data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  parameters:
+    Symbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: SPBEX instrument symbol. Surrounding whitespace is trimmed and letters are uppercased.
+      schema:
+        type: string
+        minLength: 1
+        pattern: '^[A-Za-z0-9._-]+$'
+  schemas:
+    DailyMarketRecord:
+      type: object
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: string
+          format: date-time
+          description: Source candle Unix timestamp converted to UTC.
+          example: '2013-03-25T00:00:00Z'
+        close:
+          type: number
+          exclusiveMinimum: 0
+        high:
+          type: number
+          exclusiveMinimum: 0
+        low:
+          type: number
+          exclusiveMinimum: 0
+        volume:
+          type: 'null'
+          description: The chart feed has no volume field.
+        facevalue:
+          type: number
+          const: 1
+          description: Constant value preserved from the referenced SPBEX adapter.
+    LatestCandleQuoteRecord:
+      type: object
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: [string, 'null']
+          format: date-time
+          description: Latest candle time in UTC, or null when the successful feed is empty.
+        close:
+          type: [number, 'null']
+          description: Latest candle close, or null when the successful feed is empty.
+        high:
+          type: [number, 'null']
+          description: Latest candle high, or null when the successful feed is empty.
+        low:
+          type: [number, 'null']
+          description: Latest candle low, or null when the successful feed is empty.
+        volume:
+          type: 'null'
+          description: The chart feed has no volume field.
+        facevalue:
+          type: [number, 'null']
+          description: 1 when a candle is available, otherwise null.
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [invalid_symbol, spbex_unavailable, history_store_unavailable]
+            message:
+              type: string
+              examples:
+                - Symbol is malformed or explicitly rejected by SPBEX
+                - SPBEX market data is temporarily unavailable

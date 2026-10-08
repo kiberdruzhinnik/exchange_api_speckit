@@ -25,3 +25,29 @@ fn openapi_describes_history_and_quote_array_contracts() {
         }
     }
 }
+
+#[test]
+fn spbex_contract_documents_history_quote_and_distinct_errors() {
+    let contract: Value = serde_yaml::from_str(include_str!(
+        "../specs/002-spbex-ticker-update/contracts/openapi.yaml"
+    ))
+    .unwrap();
+    let paths = contract.get("paths").unwrap();
+    for path in ["/v1/spbex/{SYMBOL}", "/v1/spbex/{SYMBOL}/quote"] {
+        let get = &paths[path]["get"];
+        let schema = &get["responses"]["200"]["content"]["application/json"]["schema"];
+        assert_eq!(schema["type"], "array");
+        assert!(get["responses"].get("400").is_some());
+        assert!(get["responses"].get("502").is_some());
+    }
+    assert!(
+        paths["/v1/spbex/{SYMBOL}"]["get"]["responses"]
+            .get("503")
+            .is_some()
+    );
+    assert!(
+        contract["components"]["schemas"]["DailyMarketRecord"]["properties"]["volume"]["type"]
+            .as_str()
+            == Some("null")
+    );
+}

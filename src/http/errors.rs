@@ -8,6 +8,8 @@ pub enum ApiError {
     InvalidSymbol,
     #[error("MOEX market data is temporarily unavailable")]
     Upstream(#[source] anyhow::Error),
+    #[error("SPBEX market data is temporarily unavailable")]
+    Spbex(#[source] anyhow::Error),
     #[error("history store is temporarily unavailable")]
     Store(String),
 }
@@ -37,6 +39,14 @@ impl IntoResponse for ApiError {
                     StatusCode::BAD_GATEWAY,
                     "moex_unavailable",
                     "MOEX market data is temporarily unavailable".to_owned(),
+                )
+            }
+            Self::Spbex(error) => {
+                tracing::warn!(error = %error, "SPBEX chart request failed");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "spbex_unavailable",
+                    "SPBEX market data is temporarily unavailable".to_owned(),
                 )
             }
             Self::Store(error) => {

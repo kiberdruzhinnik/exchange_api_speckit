@@ -6,6 +6,11 @@ use crate::{
         mapping::{lotsize, map_history, map_latest_trade},
         validation::validate_symbol,
     },
+    spbex::{
+        client::{SpbexClient, SpbexError},
+        mapping::{map_history as map_spbex_history, map_latest as map_spbex_latest},
+        validation::normalize_symbol,
+    },
 };
 use axum::{
     Json, Router,
@@ -154,6 +159,104 @@ async fn ticker_quote(
     Ok(Json(vec![record]))
 }
 
+async fn spbex_history(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Response<Body>, ApiError> {
+    let started = Instant::now();
+    let Some(normalized) = normalize_symbol(&symbol) else {
+        tracing::info!(
+            symbol,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            cache = "bypass",
+            status = 400,
+            outcome = "invalid_symbol",
+            "SPBEX history request completed"
+        );
+        return Err(ApiError::InvalidSymbol);
+    };
+    let client = state.spbex.clone();
+    let request_symbol = normalized.clone();
+    let key = format!("SPBEX:{normalized}");
+    match state
+        .history_cache
+        .get_or_fetch(key, move || async move {
+            build_spbex_history_response(&client, &request_symbol)
+                .await
+                .map_err(|error| error.to_string())
+        })
+        .await
+    {
+        Ok((body, cache_outcome)) => {
+            tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = cache_outcome.as_str(), status = 200, outcome = "success", "SPBEX history request completed");
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .map_err(|error| ApiError::Spbex(anyhow::anyhow!(error)))
+        }
+        Err(error) => {
+            let (status, outcome, api_error) = if error.starts_with("cache store:") {
+                (503, "history_store_error", ApiError::Store(error))
+            } else if error.starts_with("invalid symbol:") {
+                (400, "invalid_symbol", ApiError::InvalidSymbol)
+            } else {
+                (
+                    502,
+                    "upstream_error",
+                    ApiError::Spbex(anyhow::anyhow!(error)),
+                )
+            };
+            tracing::warn!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "miss", status, outcome, "SPBEX history request failed");
+            Err(api_error)
+        }
+    }
+}
+
+async fn spbex_quote(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Vec<crate::domain::LatestTradeRecord>>, ApiError> {
+    let started = Instant::now();
+    let Some(normalized) = normalize_symbol(&symbol) else {
+        tracing::info!(
+            symbol,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            cache = "bypass",
+            status = 400,
+            outcome = "invalid_symbol",
+            "SPBEX quote request completed"
+        );
+        return Err(ApiError::InvalidSymbol);
+    };
+    let candle = match state.spbex.latest_candle(&normalized).await {
+        Ok(candle) => candle,
+        Err(SpbexError::InvalidSymbol) => {
+            tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 400, outcome = "invalid_symbol", "SPBEX quote request completed");
+            return Err(ApiError::InvalidSymbol);
+        }
+        Err(error) => {
+            tracing::warn!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 502, outcome = "upstream_error", "SPBEX quote request failed");
+            return Err(ApiError::Spbex(anyhow::anyhow!(error)));
+        }
+    };
+    let record = map_spbex_latest(candle.as_ref()).map_err(ApiError::Spbex)?;
+    tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 200, outcome = "success", "SPBEX quote request completed");
+    Ok(Json(vec![record]))
+}
+
+async fn build_spbex_history_response(
+    client: &SpbexClient,
+    symbol: &str,
+) -> anyhow::Result<bytes::Bytes> {
+    let candles = client.history(symbol).await.map_err(|error| match error {
+        SpbexError::InvalidSymbol => anyhow::anyhow!("invalid symbol: explicit SPBEX rejection"),
+        other => anyhow::anyhow!("{other}"),
+    })?;
+    let records = map_spbex_history(&candles)?;
+    Ok(bytes::Bytes::from(serde_json::to_vec(&records)?))
+}
+
 async fn build_history_response(
     moex: &crate::moex::client::MoexClient,
     symbol: &str,
@@ -222,6 +325,8 @@ pub fn router(state: AppState) -> Router {
         .route("/health/ready", get(ready))
         .route("/v1/moex/{symbol}", get(ticker_history))
         .route("/v1/moex/{symbol}/quote", get(ticker_quote))
+        .route("/v1/spbex/{symbol}", get(spbex_history))
+        .route("/v1/spbex/{symbol}/quote", get(spbex_quote))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

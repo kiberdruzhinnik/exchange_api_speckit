@@ -1,6 +1,7 @@
 /target
 /debug/
 /release/
+__pycache__/
 *.rs.bk
 *.rlib
 *.prof*

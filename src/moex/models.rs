@@ -6,6 +6,43 @@ pub struct IssTable {
     pub data: Vec<Vec<Value>>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct LatestTrade {
+    pub trade_date: String,
+    pub trade_time: String,
+    pub price: f64,
+    pub quantity: f64,
+}
+
+pub fn parse_latest_trade(value: &Value) -> anyhow::Result<Option<LatestTrade>> {
+    let table = IssTable::parse(&value["trades"])?;
+    let date = table.index("TRADEDATE")?;
+    let time = table.index("TRADETIME")?;
+    let price = table.index("PRICE")?;
+    let quantity = table.index("QUANTITY")?;
+    let Some(row) = table.data.first() else {
+        return Ok(None);
+    };
+    let string = |index: usize, name: &str| {
+        row.get(index)
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| anyhow::anyhow!("latest trade missing {name}"))
+    };
+    let number = |index: usize, name: &str| {
+        row.get(index)
+            .and_then(|v| v.as_f64().or_else(|| v.as_str()?.parse().ok()))
+            .filter(|n| n.is_finite())
+            .ok_or_else(|| anyhow::anyhow!("latest trade has invalid {name}"))
+    };
+    Ok(Some(LatestTrade {
+        trade_date: string(date, "TRADEDATE")?,
+        trade_time: string(time, "TRADETIME")?,
+        price: number(price, "PRICE")?,
+        quantity: number(quantity, "QUANTITY")?,
+    }))
+}
+
 impl IssTable {
     pub fn parse(value: &Value) -> anyhow::Result<Self> {
         let columns = value

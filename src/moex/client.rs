@@ -1,6 +1,7 @@
 use reqwest::{Client, Url};
 use serde_json::Value;
 use std::time::Duration;
+use tokio::task::JoinSet;
 
 #[derive(Clone)]
 pub struct MoexClient {
@@ -93,70 +94,120 @@ impl MoexClient {
         .await
     }
 
+    pub async fn latest_trade(&self, symbol: &str) -> anyhow::Result<Value> {
+        let response = self
+            .client
+            .get(self.url(&format!(
+                "engines/stock/markets/shares/securities/{symbol}/trades.json"
+            ))?)
+            .query(&[("limit", "1"), ("reversed", "1"), ("iss.meta", "off")])
+            .send()
+            .await?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            anyhow::bail!("invalid symbol: unknown MOEX symbol");
+        }
+        self.decode_json(response.error_for_status()?).await
+    }
+
+    async fn history_page(&self, symbol: &str, offset: usize) -> anyhow::Result<Value> {
+        self.get_json(
+            &format!("history/engines/stock/markets/shares/securities/{symbol}.json"),
+            &[
+                ("iss.only", "history,history.cursor".into()),
+                ("iss.meta", "off".into()),
+                ("start", offset.to_string()),
+                ("limit", "100".into()),
+            ],
+        )
+        .await
+    }
+
     pub async fn history(&self, symbol: &str) -> anyhow::Result<Value> {
-        let mut offset = 0usize;
-        let mut rows = Vec::new();
-        let mut columns = None;
-        let mut history_bytes = 0usize;
+        const MAX_PARALLEL_HISTORY_PAGES: usize = 128;
+        let first_page = self.history_page(symbol, 0).await?;
+        let history = &first_page["history"];
+        let columns = history["columns"]
+            .as_array()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("MOEX history has no columns"))?;
+        let first_rows = history["data"]
+            .as_array()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("MOEX history has no data"))?;
+        let cursor_columns = first_page["history.cursor"]["columns"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing columns"))?;
+        let cursor_row = first_page["history.cursor"]["data"]
+            .as_array()
+            .and_then(|rows| rows.first())
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing data"))?;
+        let total_index = cursor_columns
+            .iter()
+            .position(|column| column.as_str() == Some("TOTAL"))
+            .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing total"))?;
+        let page_size_index = cursor_columns
+            .iter()
+            .position(|column| column.as_str() == Some("PAGESIZE"))
+            .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing page size"))?;
+        let total = cursor_row[total_index]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("invalid MOEX cursor total"))?
+            as usize;
+        let page_size = cursor_row[page_size_index]
+            .as_u64()
+            .filter(|size| *size > 0)
+            .ok_or_else(|| anyhow::anyhow!("invalid MOEX cursor page size"))?
+            as usize;
+
+        let mut rows = first_rows;
+        let mut history_bytes =
+            serde_json::to_vec(&columns)?.len() + serde_json::to_vec(&rows)?.len();
+        anyhow::ensure!(
+            history_bytes <= self.max_history_bytes,
+            "MOEX history exceeds configured byte limit"
+        );
+        let mut offsets = (page_size..total).step_by(page_size);
+        let mut pages = JoinSet::new();
+        let mut completed_pages = Vec::new();
         loop {
-            let value = self
-                .get_json(
-                    &format!("history/engines/stock/markets/shares/securities/{symbol}.json"),
-                    &[
-                        ("iss.only", "history,history.cursor".into()),
-                        ("iss.meta", "off".into()),
-                        ("start", offset.to_string()),
-                        ("limit", "100".into()),
-                    ],
-                )
-                .await?;
-            let history = &value["history"];
-            let page_columns = history["columns"]
-                .as_array()
-                .ok_or_else(|| anyhow::anyhow!("MOEX history has no columns"))?;
-            let page_rows = history["data"]
-                .as_array()
-                .ok_or_else(|| anyhow::anyhow!("MOEX history has no data"))?;
-            columns.get_or_insert_with(|| page_columns.clone());
-            if history_bytes == 0 {
-                history_bytes = serde_json::to_vec(page_columns)?.len();
-                anyhow::ensure!(
-                    history_bytes <= self.max_history_bytes,
-                    "MOEX history exceeds configured byte limit"
-                );
+            while pages.len() < MAX_PARALLEL_HISTORY_PAGES {
+                let Some(offset) = offsets.next() else { break };
+                let client = self.clone();
+                let symbol = symbol.to_owned();
+                pages.spawn(async move {
+                    let value = client.history_page(&symbol, offset).await?;
+                    Ok::<_, anyhow::Error>((offset, value))
+                });
             }
-            if page_rows.is_empty() {
+            let Some(joined) = pages.join_next().await else {
                 break;
-            }
-            let page_bytes = serde_json::to_vec(page_rows)?.len();
+            };
+            let (offset, page) = joined??;
+            let page_history = &page["history"];
+            let page_columns = page_history["columns"]
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("MOEX history page has no columns"))?;
+            anyhow::ensure!(
+                *page_columns == columns,
+                "MOEX history page columns changed during pagination"
+            );
+            let page_rows = page_history["data"]
+                .as_array()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("MOEX history page has no data"))?;
+            let page_bytes = serde_json::to_vec(&page_rows)?.len();
             anyhow::ensure!(
                 page_bytes <= self.max_history_bytes.saturating_sub(history_bytes),
                 "MOEX history exceeds configured byte limit"
             );
             history_bytes += page_bytes;
-            offset += page_rows.len();
-            rows.extend(page_rows.iter().cloned());
-            let cursor = &value["history.cursor"];
-            let cursor_columns = cursor["columns"]
-                .as_array()
-                .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing columns"))?;
-            let cursor_row = cursor["data"]
-                .as_array()
-                .and_then(|v| v.first())
-                .and_then(Value::as_array)
-                .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing data"))?;
-            let total_idx = cursor_columns
-                .iter()
-                .position(|v| v.as_str() == Some("TOTAL"))
-                .ok_or_else(|| anyhow::anyhow!("MOEX cursor missing total"))?;
-            let total = cursor_row[total_idx]
-                .as_u64()
-                .ok_or_else(|| anyhow::anyhow!("invalid MOEX cursor total"))?
-                as usize;
-            if offset >= total {
-                break;
-            }
+            completed_pages.push((offset, page_rows));
         }
-        Ok(serde_json::json!({"columns": columns.unwrap_or_default(), "data": rows}))
+        completed_pages.sort_by_key(|(offset, _)| *offset);
+        for (_, page_rows) in completed_pages {
+            rows.extend(page_rows);
+        }
+        Ok(serde_json::json!({"columns": columns, "data": rows}))
     }
 }

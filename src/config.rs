@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr, time::Duration};
+use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub history_cache_max_bytes: u64,
     pub moex_max_response_bytes: usize,
     pub moex_max_history_bytes: usize,
+    pub history_cache_db_path: PathBuf,
 }
 
 impl AppConfig {
@@ -71,6 +72,10 @@ impl AppConfig {
             return Err("MOEX_MAX_HISTORY_BYTES must be greater than zero".to_owned());
         }
 
+        let history_cache_db_path = env::var_os("MOEX_HISTORY_CACHE_DB_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/var/lib/exchange-api/history.sqlite3"));
+
         Ok(Self {
             listen_addr,
             upstream_timeout: Duration::from_secs(timeout_seconds),
@@ -79,6 +84,7 @@ impl AppConfig {
             history_cache_max_bytes,
             moex_max_response_bytes,
             moex_max_history_bytes,
+            history_cache_db_path,
         })
     }
 }

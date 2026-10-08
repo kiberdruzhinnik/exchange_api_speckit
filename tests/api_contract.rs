@@ -141,3 +141,90 @@ async fn warm_response_cache_meets_one_second_local_p95() {
     assert!(p95 < Duration::from_secs(1), "local p95 was {p95:?}");
     assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
+
+#[tokio::test]
+async fn durable_history_is_reused_after_restart_and_refetched_after_expiry() {
+    use exchange_api::cache_store::CacheStore;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/securities/SBER.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(include_str!("fixtures/moex/security-description.json")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/engines/stock/markets/shares/boards/TQBR/securities/SBER.json",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(include_str!("fixtures/moex/security-tqbr.json")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/history/engines/stock/markets/shares/securities/SBER.json",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(include_str!("fixtures/moex/history-page.json")),
+        )
+        .mount(&server)
+        .await;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("history.sqlite3");
+    let ttl = Duration::from_millis(150);
+    let client = || MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(2)).unwrap();
+    let store = CacheStore::open(&db, 1024 * 1024).await.unwrap();
+    let first_app = router(AppState::with_store(client(), ttl, 1024 * 1024, store));
+    let first = first_app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/SBER")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+
+    let reopened = CacheStore::open(&db, 1024 * 1024).await.unwrap();
+    let restarted_app = router(AppState::with_store(client(), ttl, 1024 * 1024, reopened));
+    let after_restart = restarted_app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/SBER")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after_restart.status(), StatusCode::OK);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+
+    tokio::time::sleep(Duration::from_millis(175)).await;
+    let expired_store = CacheStore::open(&db, 1024 * 1024).await.unwrap();
+    let expired_app = router(AppState::with_store(
+        client(),
+        ttl,
+        1024 * 1024,
+        expired_store,
+    ));
+    let refreshed = expired_app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/SBER")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refreshed.status(), StatusCode::OK);
+    assert_eq!(server.received_requests().await.unwrap().len(), 6);
+}

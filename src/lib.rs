@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod cache_store;
 pub mod config;
 pub mod domain;
 pub mod http;
@@ -10,6 +11,7 @@ use moex::client::MoexClient;
 pub struct AppState {
     pub moex: MoexClient,
     pub history_cache: cache::HistoryCache,
+    pub cache_store: Option<cache_store::CacheStore>,
 }
 
 impl AppState {
@@ -21,6 +23,20 @@ impl AppState {
         Self {
             moex,
             history_cache: cache::HistoryCache::new(ttl, max_bytes),
+            cache_store: None,
+        }
+    }
+
+    pub fn with_store(
+        moex: MoexClient,
+        ttl: std::time::Duration,
+        max_bytes: u64,
+        store: cache_store::CacheStore,
+    ) -> Self {
+        Self {
+            moex,
+            history_cache: cache::HistoryCache::with_store(ttl, max_bytes, store.clone()),
+            cache_store: Some(store),
         }
     }
 }

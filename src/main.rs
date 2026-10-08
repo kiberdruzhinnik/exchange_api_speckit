@@ -1,4 +1,6 @@
-use exchange_api::{AppState, config::AppConfig, http::router, moex::client::MoexClient};
+use exchange_api::{
+    AppState, cache_store::CacheStore, config::AppConfig, http::router, moex::client::MoexClient,
+};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -12,10 +14,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.moex_max_response_bytes,
         config.moex_max_history_bytes,
     )?;
-    let app = router(AppState::with_cache(
+    let store = CacheStore::open(
+        &config.history_cache_db_path,
+        config.history_cache_max_bytes,
+    )
+    .await?;
+    let app = router(AppState::with_store(
         moex,
         config.history_cache_ttl,
         config.history_cache_max_bytes,
+        store,
     ));
     let listener = TcpListener::bind(config.listen_addr).await?;
 

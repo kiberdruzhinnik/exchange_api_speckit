@@ -11,6 +11,14 @@ use wiremock::{
 };
 
 #[tokio::test]
+async fn maps_history_store_failure_to_service_unavailable() {
+    use axum::response::IntoResponse;
+    let response =
+        exchange_api::http::errors::ApiError::Store("database unavailable".into()).into_response();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
 async fn rejects_malformed_symbols() {
     let server = MockServer::start().await;
     let client = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(1)).unwrap();

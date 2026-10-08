@@ -1,11 +1,42 @@
+use crate::cache_store::CacheStore;
 use bytes::Bytes;
 use moka::future::Cache;
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+#[derive(Clone)]
+struct CachedResponse {
+    body: Bytes,
+    expires_at: Instant,
+    outcome: CacheOutcome,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CacheOutcome {
+    Memory,
+    Persistent,
+    Miss,
+}
+
+impl CacheOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Memory => "memory_hit",
+            Self::Persistent => "persistent_hit",
+            Self::Miss => "miss",
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct HistoryCache {
-    entries: Cache<String, Result<Bytes, Arc<String>>>,
+    entries: Cache<String, Result<CachedResponse, Arc<String>>>,
     max_bytes: u64,
+    store: Option<CacheStore>,
+    ttl: Duration,
 }
 
 impl HistoryCache {
@@ -13,49 +44,102 @@ impl HistoryCache {
         let entries = Cache::builder()
             .max_capacity(max_bytes)
             .weigher(
-                |_key: &String, value: &Result<Bytes, Arc<String>>| match value {
-                    Ok(bytes) => u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+                |_key: &String, value: &Result<CachedResponse, Arc<String>>| match value {
+                    Ok(response) => u32::try_from(response.body.len()).unwrap_or(u32::MAX),
                     Err(_) => 1,
                 },
             )
             .time_to_live(ttl)
             .build();
-        Self { entries, max_bytes }
+        Self {
+            entries,
+            max_bytes,
+            store: None,
+            ttl,
+        }
+    }
+
+    pub fn with_store(ttl: Duration, max_bytes: u64, store: CacheStore) -> Self {
+        let mut cache = Self::new(ttl, max_bytes);
+        cache.store = Some(store);
+        cache
     }
 
     pub async fn get(&self, key: &str) -> Option<Bytes> {
-        self.entries.get(key).await.and_then(Result::ok)
+        match self.entries.get(key).await {
+            Some(Ok(response)) if response.expires_at > Instant::now() => Some(response.body),
+            Some(Ok(_)) => {
+                self.entries.invalidate(key).await;
+                None
+            }
+            Some(Err(_)) | None => None,
+        }
     }
 
-    pub async fn get_or_fetch<F, Fut>(&self, key: String, fetch: F) -> Result<(Bytes, bool), String>
+    pub async fn get_or_fetch<F, Fut>(
+        &self,
+        key: String,
+        fetch: F,
+    ) -> Result<(Bytes, CacheOutcome), String>
     where
         F: FnOnce() -> Fut + Send,
         Fut: Future<Output = Result<Bytes, String>> + Send,
     {
-        let was_cache_hit = self.get(&key).await.is_some();
+        if let Some(body) = self.get(&key).await {
+            return Ok((body, CacheOutcome::Memory));
+        }
         let cache_key = key.clone();
+        let store_key = cache_key.clone();
+        let store = self.store.clone();
+        let ttl = self.ttl;
         let value = self
             .entries
-            .get_with(key, async move { fetch().await.map_err(Arc::new) })
+            .get_with(key, async move {
+                if let Some(store) = &store {
+                    match store.get(&store_key).await {
+                        Ok(Some(entry)) => {
+                            return Ok(CachedResponse {
+                                body: entry.body,
+                                expires_at: Instant::now() + entry.fresh_for,
+                                outcome: CacheOutcome::Persistent,
+                            });
+                        }
+                        Ok(None) => {}
+                        Err(error) => return Err(Arc::new(format!("cache store: {error}"))),
+                    }
+                }
+                let body = fetch().await.map_err(Arc::new)?;
+                if let Some(store) = &store {
+                    store
+                        .put(&store_key, &body, ttl)
+                        .await
+                        .map_err(|error| Arc::new(format!("cache store: {error}")))?;
+                }
+                Ok(CachedResponse {
+                    body,
+                    expires_at: Instant::now() + ttl,
+                    outcome: CacheOutcome::Miss,
+                })
+            })
             .await;
         if value.is_err() {
             self.entries.invalidate(&cache_key).await;
         }
         if value
             .as_ref()
-            .is_ok_and(|bytes| bytes.len() as u64 > self.max_bytes)
+            .is_ok_and(|response| response.body.len() as u64 > self.max_bytes)
         {
             self.entries.invalidate(&cache_key).await;
         }
         value
-            .map(|bytes| (bytes, was_cache_hit))
+            .map(|response| (response.body, response.outcome))
             .map_err(|error| (*error).clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::HistoryCache;
+    use super::{CacheOutcome, HistoryCache};
     use bytes::Bytes;
     use std::{
         sync::{
@@ -95,7 +179,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(result, (Bytes::from_static(b"[]"), true));
+        assert_eq!(result, (Bytes::from_static(b"[]"), CacheOutcome::Memory));
     }
 
     #[tokio::test]
@@ -146,7 +230,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(result.0, Bytes::from_static(b"123"));
-            assert!(!result.1);
+            assert_eq!(result.1, CacheOutcome::Miss);
             assert_eq!(calls.load(Ordering::SeqCst), expected_call);
         }
     }

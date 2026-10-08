@@ -1,4 +1,7 @@
-use exchange_api::moex::mapping::map_history;
+use exchange_api::moex::{
+    board::{board_on_date, primary_board_by_date},
+    mapping::map_history,
+};
 use serde_json::Value;
 
 fn fixture(name: &str) -> Value {
@@ -49,4 +52,43 @@ fn preserves_null_values_and_sorts_records() {
     assert_eq!(records[0].date.to_rfc3339(), "2026-10-05T00:00:00+00:00");
     assert_eq!(records[0].close, None);
     assert_eq!(records[0].volume, None);
+}
+
+#[test]
+fn chooses_primary_board_that_applied_on_each_trading_date() {
+    let listings = fixture("board-change");
+    let boards = primary_board_by_date(&listings).unwrap();
+    assert_eq!(board_on_date(&boards, "2012-12-28"), Some("EQBR"));
+    assert_eq!(board_on_date(&boards, "2013-01-03"), Some("TQBR"));
+    let rows = serde_json::json!({
+        "columns": ["BOARDID", "TRADEDATE", "CLOSE", "HIGH", "LOW", "VOLUME"],
+        "data": [["EQBR", "2012-12-28", 10, 11, 9, 100], ["TQBR", "2013-01-03", 20, 21, 19, 200]]
+    });
+    let mut selected = Vec::new();
+    for (board, _, _) in &boards {
+        selected.extend(
+            map_history(&rows, Some(1.0), Some(board))
+                .unwrap()
+                .into_iter()
+                .filter(|record| {
+                    let day = record.date.format("%Y-%m-%d").to_string();
+                    board_on_date(&boards, &day) == Some(board.as_str())
+                }),
+        );
+    }
+    assert_eq!(selected.len(), 2);
+}
+
+#[test]
+fn parses_quote_and_preserves_exact_history_shaped_fields() {
+    let trade = exchange_api::moex::mapping::map_latest_trade(&fixture("trades-latest")).unwrap();
+    assert_eq!(
+        trade.date.unwrap().to_rfc3339(),
+        "2026-10-08T08:41:57+00:00"
+    );
+    assert_eq!(trade.close, Some(280.34));
+    assert_eq!(trade.volume, Some(1.0));
+    assert_eq!(trade.high, None);
+    assert_eq!(trade.low, None);
+    assert_eq!(trade.facevalue, None);
 }

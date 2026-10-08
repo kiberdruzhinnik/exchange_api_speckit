@@ -8,6 +8,8 @@ pub enum ApiError {
     InvalidSymbol,
     #[error("MOEX market data is temporarily unavailable")]
     Upstream(#[source] anyhow::Error),
+    #[error("history store is temporarily unavailable")]
+    Store(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -35,6 +37,14 @@ impl IntoResponse for ApiError {
                     StatusCode::BAD_GATEWAY,
                     "moex_unavailable",
                     "MOEX market data is temporarily unavailable".to_owned(),
+                )
+            }
+            Self::Store(error) => {
+                tracing::error!(error = %error, "history cache store failed");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "history_store_unavailable",
+                    "Ticker history is temporarily unavailable".to_owned(),
                 )
             }
         };

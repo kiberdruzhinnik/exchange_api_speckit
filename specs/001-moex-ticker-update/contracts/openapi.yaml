@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: MOEX Ticker History API
   version: 1.0.0
-  description: Returns daily MOEX history available without subscription credentials, selecting the board that was primary on each trading date. Under normal operating conditions, at least 95% of successful responses complete in under one second end to end.
+  description: Returns daily MOEX history and the latest executed trade available without subscription credentials. History selects the board primary on each trading date. Under normal operating conditions (10 concurrent clients issuing 10 requests per second in total), at least 95% of successful responses complete in under one second end to end.
   license:
     name: UNLICENSED
     identifier: LicenseRef-Proprietary
@@ -51,8 +51,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The history response could not be read from or persisted to the service's history store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/moex/{SYMBOL}/quote:
+    get:
+      operationId: getMoexTickerLatestTrade
+      summary: Get the latest executed trade for a MOEX ticker
+      description: Fetches the latest trade from MOEX ISS for this request. Returns a one-element array using the six-field history record shape. A valid empty trades block for a recognized ticker returns one record with all six fields null. Quote data is never reused from a prior request.
+      security: []
+      parameters:
+        - name: SYMBOL
+          in: path
+          required: true
+          description: MOEX instrument security identifier.
+          schema:
+            type: string
+            minLength: 1
+            pattern: '^[A-Za-z0-9._-]+$'
+      responses:
+        '200':
+          description: One latest-trade record, or one all-null record when a valid ISS response contains no latest trade for the recognized ticker.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestTradeQuoteRecord'
+              example:
+                - date: '2026-10-08T08:41:57Z'
+                  close: 280.34
+                  high: null
+                  low: null
+                  volume: 1
+                  facevalue: null
+        '400':
+          description: The symbol is malformed, unsupported, or unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: MOEX ISS failed, access was denied, or returned malformed trade data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
+    LatestTradeQuoteRecord:
+      type: object
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: [string, 'null']
+          format: date-time
+          description: Trade execution time normalized to UTC; null when ISS returns a valid empty trade block.
+          example: '2026-10-08T08:41:57Z'
+        close:
+          type: [number, 'null']
+          description: Latest executed trade price; null when ISS returns a valid empty trade block.
+        high:
+          type: 'null'
+          description: Always null for a latest-trade record.
+        low:
+          type: 'null'
+          description: Always null for a latest-trade record.
+        volume:
+          type: [number, 'null']
+          description: Latest executed trade quantity; null when ISS returns a valid empty trade block.
+        facevalue:
+          type: 'null'
+          description: Always null for a latest-trade record.
     DailyMarketRecord:
       type: object
       required: [date, close, high, low, volume, facevalue]

@@ -22,11 +22,13 @@ RUN set -eux; \
       *) echo "unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     cargo build --release --locked --target "$rust_target"; \
-    mkdir -p /out; \
-    cp "/app/target/$rust_target/release/exchange-api" /out/exchange-api
+    mkdir -p /out /var/lib/exchange-api; \
+    cp "/app/target/$rust_target/release/exchange-api" /out/exchange-api; \
+    touch /var/lib/exchange-api/.keep
 
 FROM gcr.io/distroless/cc-debian13:nonroot
 COPY --from=builder /out/exchange-api /exchange-api
+COPY --from=builder --chown=65532:65532 /var/lib/exchange-api /var/lib/exchange-api
 EXPOSE 8080
 USER 65532:65532
 ENTRYPOINT ["/exchange-api"]

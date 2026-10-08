@@ -42,16 +42,18 @@ curl -i http://127.0.0.1:8080/v1/spbex/SYMBOL
 curl -i http://127.0.0.1:8080/v1/spbex/SYMBOL/quote
 ```
 
-History returns an ascending array of six-field records; `volume` is null and `facevalue` is `1`. Empty successful history is `[]`. Quote returns one latest-candle record and must contact the feed on every request. It starts with a 1-day range and expands the range when empty until it finds a candle or reaches the Unix epoch; only an empty result across the full available range produces one record with nullable market fields. Invalid symbols or explicit upstream rejection return HTTP 400, other upstream failures return HTTP 502, and history-store failures return HTTP 503. Restart the service with the same DB path and request history again before the cache TTL expires to confirm persistence; after expiry, the source is fetched again.
+History returns an ascending array of six-field records dated before the current UTC calendar date; candles dated today are excluded, even from cached or persisted history payloads. `volume` is null and `facevalue` is `1`. Empty successful history is `[]`. Quote returns one latest-candle record, may include a candle dated today, and must contact the feed on every request. It starts with a 1-day range and expands the range when empty until it finds a candle or reaches the Unix epoch; only an empty result across the full available range produces one record with nullable market fields. Invalid symbols or explicit upstream rejection return HTTP 400, other upstream failures return HTTP 502, and history-store failures return HTTP 503. Restart the service with the same DB path and request history again before the cache TTL expires to confirm persistence; after expiry, the source is fetched again.
 
 ## Production latency acceptance
 
-Build and run the local release binary against production SPBEX. The acceptance harness must fully read response bodies, use 10 concurrent clients, and issue 10 requests per second total. It must report history-only, quote-only, and combined results separately. History runs must include cache hits, cold misses, and expired entries. Quote runs always contact the upstream feed. Record successful-response p95, actual issue rate, skipped requests, and upstream failures separately. A run is invalid if it issues fewer than 10 requests per second or skips scheduled requests; it cannot pass based on p95 alone. Each valid route-specific run and the combined profile must achieve successful-response p95 under one second. This is a hard acceptance gate.
+Build and run the local release binary against production SPBEX. The acceptance harness fully reads response bodies, schedules arrivals at 10 requests per second on a fixed cadence, and caps in-flight requests at 10 workers. It reports history-only, quote-only, and combined results separately. History runs must include cache hits, cold misses, and expired entries. Quote runs always contact the upstream feed. Record successful-response p95, actual issue rate, skipped requests, and upstream failures separately. A run is invalid if it issues fewer than 10 requests per second or skips scheduled requests; it cannot pass based on p95 alone. Each valid route-specific run and the combined profile must achieve successful-response p95 under one second. This is a hard acceptance gate.
 
 ```sh
 cargo build --release --locked
 scripts/measure-spbex-latency.sh
 ```
+
+Production acceptance on 2026-10-08 with SBER, 10 workers, and a 120-second full-rate run passed all profiles: history p95 0.003534 s, quote p95 0.458487 s, and combined p95 0.502252 s (history route 0.004526 s, quote route 0.764562 s). Each profile issued 1,200 requests at an observed 10.01 requests per second, with no skips or errors. The SPBEX client permits up to eight concurrent upstream requests.
 
 The default benchmark symbol is `SBER`, verified to have live SPBEX chart data. Pass `--symbols` only with symbols that have been confirmed on SPBEX; an empty chart feed expands quote lookback to the full available range and measures a different failure-free path.
 

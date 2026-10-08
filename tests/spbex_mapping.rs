@@ -1,7 +1,12 @@
+use chrono::NaiveDate;
 use exchange_api::spbex::{
     mapping::{map_history, map_latest},
     models::SourceCandle,
 };
+
+fn current_date() -> NaiveDate {
+    NaiveDate::from_ymd_opt(2026, 10, 8).unwrap()
+}
 
 fn fixture(name: &str) -> Vec<SourceCandle> {
     serde_json::from_str(
@@ -12,7 +17,7 @@ fn fixture(name: &str) -> Vec<SourceCandle> {
 
 #[test]
 fn maps_and_sorts_six_field_history_records() {
-    let records = map_history(&fixture("history")).unwrap();
+    let records = map_history(&fixture("history"), current_date()).unwrap();
     assert_eq!(records.len(), 2);
     assert_eq!(records[0].date.to_rfc3339(), "2013-03-25T00:00:00+00:00");
     assert_eq!(records[0].close, Some(73.35));
@@ -21,32 +26,58 @@ fn maps_and_sorts_six_field_history_records() {
 }
 
 #[test]
+fn excludes_current_date_candles_before_market_value_validation() {
+    let timestamp = current_date()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
+    let records = map_history(
+        &[SourceCandle {
+            time: timestamp,
+            close: None,
+            high: None,
+            low: None,
+        }],
+        current_date(),
+    )
+    .unwrap();
+    assert!(records.is_empty());
+}
+
+#[test]
 fn rejects_bad_ohlc_duplicate_and_invalid_timestamps() {
-    assert!(map_history(&fixture("malformed")).is_err());
+    assert!(map_history(&fixture("malformed"), current_date()).is_err());
     assert!(
-        map_history(&[
-            SourceCandle {
-                time: 1_000_000,
-                close: Some(2.0),
-                high: Some(3.0),
-                low: Some(1.0)
-            },
-            SourceCandle {
-                time: 1_000_000,
-                close: Some(2.0),
-                high: Some(3.0),
-                low: Some(1.0)
-            },
-        ])
+        map_history(
+            &[
+                SourceCandle {
+                    time: 1_000_000,
+                    close: Some(2.0),
+                    high: Some(3.0),
+                    low: Some(1.0)
+                },
+                SourceCandle {
+                    time: 1_000_000,
+                    close: Some(2.0),
+                    high: Some(3.0),
+                    low: Some(1.0)
+                },
+            ],
+            current_date()
+        )
         .is_err()
     );
     assert!(
-        map_history(&[SourceCandle {
-            time: 0,
-            close: Some(1.0),
-            high: Some(1.0),
-            low: Some(1.0)
-        }])
+        map_history(
+            &[SourceCandle {
+                time: 0,
+                close: Some(1.0),
+                high: Some(1.0),
+                low: Some(1.0)
+            }],
+            current_date()
+        )
         .is_err()
     );
 }

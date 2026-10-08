@@ -66,6 +66,72 @@ async fn history_returns_six_fields_sorted_and_uses_history_cache() {
 }
 
 #[tokio::test]
+async fn history_excludes_current_date_candle_from_response_and_cache_but_quote_returns_it() {
+    let server = MockServer::start().await;
+    let today = chrono::Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
+    let feed = format!(
+        r#"[{{"bar_unixtime":1364169600,"close":73.35,"high":75.05,"low":73.21}},{{"bar_unixtime":1364256000,"close":74.15,"high":74.55,"low":73.90}},{{"bar_unixtime":{today},"close":99.9,"high":100.0,"low":99.0}}]"#
+    );
+    Mock::given(method("GET"))
+        .and(path(PATH))
+        .respond_with(ResponseTemplate::new(200).set_body_string(feed))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let app = app(&server, Duration::from_secs(30));
+
+    for _ in 0..2 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/spbex/SBER")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let records: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(records.as_array().unwrap().len(), 2);
+        assert!(records.as_array().unwrap().iter().all(|record| {
+            record["date"].as_str().is_some_and(|date| {
+                !date.starts_with(&chrono::Utc::now().format("%Y-%m-%d").to_string())
+            })
+        }));
+    }
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/spbex/SBER/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let quote: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        quote[0]["date"],
+        chrono::Utc::now().format("%Y-%m-%dT00:00:00Z").to_string()
+    );
+    assert_eq!(quote[0]["close"], 99.9);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn history_returns_empty_array_for_successful_empty_feed() {
     let server = MockServer::start().await;
     chart("[]").mount(&server).await;

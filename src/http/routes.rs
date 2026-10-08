@@ -177,11 +177,12 @@ async fn spbex_history(
     };
     let client = state.spbex.clone();
     let request_symbol = normalized.clone();
-    let key = format!("SPBEX:{normalized}");
+    let history_date = chrono::Utc::now().date_naive();
+    let key = format!("SPBEX:{normalized}:{history_date}");
     match state
         .history_cache
         .get_or_fetch(key, move || async move {
-            build_spbex_history_response(&client, &request_symbol)
+            build_spbex_history_response(&client, &request_symbol, history_date)
                 .await
                 .map_err(|error| error.to_string())
         })
@@ -248,12 +249,13 @@ async fn spbex_quote(
 async fn build_spbex_history_response(
     client: &SpbexClient,
     symbol: &str,
+    current_date: chrono::NaiveDate,
 ) -> anyhow::Result<bytes::Bytes> {
     let candles = client.history(symbol).await.map_err(|error| match error {
         SpbexError::InvalidSymbol => anyhow::anyhow!("invalid symbol: explicit SPBEX rejection"),
         other => anyhow::anyhow!("{other}"),
     })?;
-    let records = map_spbex_history(&candles)?;
+    let records = map_spbex_history(&candles, current_date)?;
     Ok(bytes::Bytes::from(serde_json::to_vec(&records)?))
 }
 

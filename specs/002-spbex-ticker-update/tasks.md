@@ -59,7 +59,7 @@
 
 ### Implementation for User Story 2
 
-- [X] T019 [US2] Implement uncached quote handling with 1-day initial lookback, doubling empty windows until a candle is found or Unix epoch is reached, limit concurrent chart-feed requests to five, and select the newest candle in `src/http/routes.rs` and `src/spbex/client.rs`
+- [X] T019 [US2] Implement uncached quote handling with 1-day initial lookback, doubling empty windows until a candle is found or Unix epoch is reached, limit concurrent chart-feed requests to eight, and select the newest candle in `src/http/routes.rs` and `src/spbex/client.rs`
 - [X] T020 [US2] Map successful empty full-range quote results to one record with nullable market fields in `src/spbex/mapping.rs`
 - [X] T021 [US2] Document quote freshness, adaptive lookback, one-record shape, and empty quote response in `specs/002-spbex-ticker-update/contracts/openapi.yaml` and `specs/002-spbex-ticker-update/quickstart.md`
 
@@ -146,3 +146,10 @@ Task: T013 tests/api_contract_schema.rs
 - Quote responses must bypass Moka and SQLite even when history is cached.
 - A latency run is invalid if it fails to sustain the required 10 requests per second or skips scheduled requests.
 - amd64 acceptance requires a successful build only; amd64 runtime testing is not required.
+
+
+## Phase 7: Convergence
+
+- [X] T032 Exclude candles dated on the current calendar date from `/v1/spbex/{SYMBOL}` before returning, caching, or persisting history, while preserving current-date candles on `/quote`, per FR-016 (contradicts)
+- [X] T033 Add regression tests proving current-date candles are excluded from history, including cache-hit behavior, and remain available through quote, per US1/AC4 and FR-016 (missing)
+- [X] T034 Align the plan, OpenAPI contract, and quickstart with the rule that current-date candles are reserved for quote and excluded from history, per FR-016 and Constitution II (contradicts)

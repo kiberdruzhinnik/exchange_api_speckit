@@ -2,13 +2,22 @@ use crate::{
     domain::{DailyMarketRecord, LatestTradeRecord},
     spbex::models::SourceCandle,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 
-pub fn map_history(candles: &[SourceCandle]) -> anyhow::Result<Vec<DailyMarketRecord>> {
-    let mut records = candles
-        .iter()
-        .map(map_candle)
-        .collect::<anyhow::Result<Vec<_>>>()?;
+pub fn map_history(
+    candles: &[SourceCandle],
+    current_date: NaiveDate,
+) -> anyhow::Result<Vec<DailyMarketRecord>> {
+    let mut records = Vec::with_capacity(candles.len());
+    for candle in candles {
+        anyhow::ensure!(candle.time > 0, "SPBEX candle timestamp must be positive");
+        let date = DateTime::from_timestamp(candle.time, 0)
+            .ok_or_else(|| anyhow::anyhow!("invalid SPBEX candle timestamp"))?;
+        if date.date_naive() >= current_date {
+            continue;
+        }
+        records.push(map_candle(candle)?);
+    }
     records.sort_by_key(|record| record.date);
     for pair in records.windows(2) {
         anyhow::ensure!(

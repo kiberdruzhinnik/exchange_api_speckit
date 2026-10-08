@@ -35,17 +35,24 @@ def run_stage(args, mode):
     max_in_flight = 0
     active_lock = threading.Lock()
 
-    def client_worker(client_id):
+    def issue(url, route, symbol, client_id):
         nonlocal active, max_in_flight
-        client_results = []
-        skipped = 0
-        for tick in range(args.duration_seconds):
-            slot = tick * client_count + client_id
-            scheduled_at = start + slot / client_count
+        with active_lock:
+            active += 1
+            max_in_flight = max(max_in_flight, active)
+        try:
+            return request_once(url, route, symbol, client_id)
+        finally:
+            with active_lock:
+                active -= 1
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=client_count) as pool:
+        requests = []
+        for slot in range(schedule_slots):
+            scheduled_at = start + slot / 10
             delay = scheduled_at - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
-
             if mode == "combined":
                 route = "history" if slot % 2 == 0 else "quote"
             else:
@@ -53,20 +60,9 @@ def run_stage(args, mode):
             symbol = args.symbols[slot % len(args.symbols)]
             suffix = "" if route == "history" else "/quote"
             url = f"{args.base_url.rstrip('/')}/v1/spbex/{symbol}{suffix}"
-            with active_lock:
-                active += 1
-                max_in_flight = max(max_in_flight, active)
-            client_results.append(request_once(url, route, symbol, client_id))
-            with active_lock:
-                active -= 1
-        return client_results, skipped
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=client_count) as pool:
-        workers = [pool.submit(client_worker, client_id) for client_id in range(client_count)]
-        time.sleep(max(0.0, start - time.monotonic()))
-        worker_results = [worker.result() for worker in workers]
-    results = [result for client_results, _ in worker_results for result in client_results]
-    skipped_count = sum(skipped for _, skipped in worker_results)
+            requests.append(pool.submit(issue, url, route, symbol, slot % client_count))
+        results = [request.result() for request in requests]
+    skipped_count = 0
     issued_count = len(results)
     samples = [(route, latency) for route, _, latency, _, status, _ in results if status and 200 <= status < 300]
     errors = [

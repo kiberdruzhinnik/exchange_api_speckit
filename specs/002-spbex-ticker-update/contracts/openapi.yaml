@@ -13,12 +13,13 @@ paths:
     get:
       operationId: getSpbexTickerHistory
       summary: Get daily history for an SPBEX ticker
+      description: Returns candles dated before the current UTC calendar date. A candle dated today is available only from the quote route.
       security: []
       parameters:
         - $ref: '#/components/parameters/Symbol'
       responses:
         '200':
-          description: Daily candles ordered oldest to newest. Successful empty data is an empty array. `volume` is null because the chart feed does not provide it; `facevalue` is 1.
+          description: Daily candles dated before the current UTC calendar date, ordered oldest to newest. Candles dated today are excluded. Successful empty data is an empty array. `volume` is null because the chart feed does not provide it; `facevalue` is 1.
           content:
             application/json:
               schema:
@@ -54,7 +55,7 @@ paths:
     get:
       operationId: getSpbexTickerLatestCandle
       summary: Get the latest available daily candle for an SPBEX ticker
-      description: Fetches the public SPBEX chart feed on every request and returns its newest available daily candle. It starts with a recent range and expands the range when empty until a candle is found or the full available range has been checked. The response is never read from or written to a cache. An empty result across the full available range returns one record with nullable market fields.
+      description: Fetches the public SPBEX chart feed on every request and returns its newest available daily candle, including a candle dated on the current UTC calendar date. It starts with a recent range and expands the range when empty until a candle is found or the full available range has been checked. The response is never read from or written to a cache. An empty result across the full available range returns one record with nullable market fields.
       security: []
       parameters:
         - $ref: '#/components/parameters/Symbol'

@@ -45,6 +45,26 @@ fn spbex_contract_documents_history_quote_and_distinct_errors() {
             .get("503")
             .is_some()
     );
+    let history = &paths["/v1/spbex/{SYMBOL}"]["get"];
+    let quote = &paths["/v1/spbex/{SYMBOL}/quote"]["get"];
+    assert!(
+        history["description"]
+            .as_str()
+            .unwrap()
+            .contains("current UTC calendar date")
+    );
+    assert!(
+        history["responses"]["200"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("Candles dated today are excluded")
+    );
+    assert!(
+        quote["description"]
+            .as_str()
+            .unwrap()
+            .contains("including a candle dated on the current UTC calendar date")
+    );
     assert!(
         contract["components"]["schemas"]["DailyMarketRecord"]["properties"]["volume"]["type"]
             .as_str()

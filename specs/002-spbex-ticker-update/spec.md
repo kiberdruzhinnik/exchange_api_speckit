@@ -17,6 +17,7 @@
 - Q: How should the API distinguish an unsupported SPBEX symbol from a valid symbol whose chart feed is empty? → A: Treat a successful empty feed as valid empty data; return HTTP 400 only for malformed symbols or explicit upstream rejection.
 - Q: If the production load test misses the one-second p95 target for successful responses, should the feature remain incomplete until it passes? → A: Yes. The p95 target is a hard acceptance gate; optimize the request/source path and repeat measurement until it passes.
 - Q: What should the history route return when the persistent history store cannot be read or written? → A: Return HTTP 503 with the standard history-store error, distinct from an SPBEX failure.
+- Q: Should `/v1/spbex/{SYMBOL}` include a candle dated on the current calendar date? → A: No. Current-date candles are reserved for `/v1/spbex/{SYMBOL}/quote`; history returns only candles dated before the current date.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -33,6 +34,7 @@ A client requests the history of an SPBEX instrument by symbol and receives date
 1. **Given** a syntactically valid symbol accepted by SPBEX with available daily candles, **When** a client requests `/v1/spbex/{SYMBOL}`, **Then** the service returns a JSON array of records containing `date`, `close`, `high`, `low`, `volume`, and `facevalue`.
 2. **Given** source candles are out of chronological order, **When** the client requests history, **Then** the records are returned in ascending date order and each source timestamp is represented in UTC.
 3. **Given** a syntactically valid symbol with a successful empty feed, **When** the client requests history, **Then** the service returns an empty JSON array.
+4. **Given** SPBEX has a candle dated on the current calendar date, **When** a client requests history, **Then** that candle is excluded; the quote route may return it.
 
 ### User Story 2 - Retrieve the latest SPBEX quote (Priority: P2)
 
@@ -72,6 +74,7 @@ A client receives a documented error when its symbol is malformed or explicitly 
 - The persistent history store is unavailable while serving or saving history.
 - The chart feed omits trading volume; the API MUST return `null` for `volume` to indicate unavailable data.
 - The quote is the latest available daily candle, not a most-recent executed trade.
+- A candle dated on the current calendar date is excluded from history and is available only through the quote route.
 
 ## Requirements *(mandatory)*
 
@@ -92,6 +95,7 @@ A client receives a documented error when its symbol is malformed or explicitly 
 - **FR-013**: Retrieved history MUST survive application restarts for its applicable freshness period. Expired history MUST be refreshed before being returned; the storage mechanism is not prescribed.
 - **FR-014**: API documentation MUST describe both SPBEX routes, symbol normalization, response fields and types, ordering, empty-history and no-quote behavior, and client and dependency errors.
 - **FR-015**: If the history response cannot be read from or persisted to the history store, the history endpoint MUST return HTTP `503` in the standard JSON error format with a history-store error distinct from the SPBEX dependency error.
+- **FR-016**: The history endpoint MUST exclude candles dated on the current calendar date. Current-date candles MUST be available only through the quote endpoint.
 
 ### Key Entities
 
@@ -114,7 +118,7 @@ A client receives a documented error when its symbol is malformed or explicitly 
 - `SPBEX` is the exchange identifier; `/v1/sbpex/{SYMBOL}` in the initial description is a typo for `/v1/spbex/{SYMBOL}`, confirmed by the quote path in the same request.
 - SPBEX symbols are normalized by trimming surrounding whitespace and converting letters to uppercase, matching the referenced Go adapter.
 - The chart feed is not an instrument catalog. A successful empty feed is indistinguishable from valid empty history and MUST use the empty-history/no-quote behavior; HTTP `400` for an otherwise well-formed symbol is returned only when the upstream explicitly rejects it.
-- Daily chart history is based on the referenced SPBEX adapter's public chart feed behavior, which requests daily candles from the beginning of available data through the current time.
+- Daily chart history is based on the referenced SPBEX adapter's public chart feed, but the history response excludes the current calendar date; the quote route is the only route that returns current-date candle data.
 - The referenced adapter uses the most recent available daily candle for its current-price method and assigns `facevalue` as `1`; the quote route follows this behavior. The feed omits volume, so the API represents it as `null` rather than the Go struct's default `0`.
 - History freshness and restart persistence follow the existing project's ticker-history expectations; exact storage choices remain outside this specification.
 - A valid no-quote response follows the existing MOEX API convention of returning a one-element history-shaped array with unavailable quote fields as null.

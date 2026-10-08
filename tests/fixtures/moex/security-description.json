@@ -1,0 +1,1 @@
+{"description":{"columns":["name","title","value"],"data":[["FACEVALUE","Nominal value","3"]]},"boards":{"columns":["SECID","BOARDID","ISPRIMARY","FROM","TILL"],"data":[["SBER","TQBR",1,"2013-01-01","2026-12-31"],["SBER","EQBR",0,"2010-01-01","2026-12-31"]]}}

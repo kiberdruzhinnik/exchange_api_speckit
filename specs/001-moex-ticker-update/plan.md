@@ -1,0 +1,97 @@
+# Implementation Plan: MOEX Ticker History API
+
+**Branch**: `001-moex-ticker-update` | **Date**: 2026-10-08 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification from `specs/001-moex-ticker-update/spec.md`
+
+## Summary
+
+Build a Rust HTTP service exposing `GET /v1/moex/{SYMBOL}`. Fetch unauthenticated MOEX ISS history, select each row from the board that was primary on that trading date, and map named source fields into the specified JSON array. Populate the requested `facevalue` field from the current `LOTSIZE` reference for the selected primary board; the SBER record dated 2026-10-06 is specified as `1`. Use a bounded in-memory cache of complete successful responses to support the one-second p95 objective. Package the service as a non-root distroless Debian image with Linux amd64 support and arm64 support for native development.
+
+## Technical Context
+
+**Language/Version**: Rust stable, edition 2024; package MSRV is Rust 1.85 as declared in `Cargo.toml`.
+
+**Primary Dependencies**: Axum and Tokio for HTTP/async runtime; `reqwest` with Rustls for upstream HTTPS; Serde/serde_json for data mapping; `tracing` for structured logs.
+
+**Storage**: No durable storage. Use a bounded process-local cache of complete responses keyed by ticker, with configurable TTL (default 60 seconds) and byte capacity (default 64 MiB); populate entries only after all upstream pages and mapping complete successfully.
+
+**Testing**: Cargo unit and integration tests, mocked MOEX ISS fixtures for pagination, parsing, nulls, and failures, OpenAPI contract validation, and Docker build/smoke validation.
+
+**Target Platform**: Linux containers for `linux/amd64` (required) and `linux/arm64` (native developer platform), port 8080. Build with Docker Buildx. Compile on `BUILDPLATFORM` using the Rust target triple and matching Debian cross-compiler, then use the target-platform `gcr.io/distroless/cc-debian13:nonroot` runtime, which includes the GCC runtime dependency on both architectures.
+
+**Project Type**: Single Rust web service in the existing Cargo application.
+
+**Performance Goals**: Under normal operating conditions, at least 95% of successful requests must return the complete response in under one second, measured end to end from request receipt. Serve cache hits directly and deduplicate concurrent misses for the same ticker. Cold or expired-cache misses still fetch and assemble all upstream pages; validate them in the same representative workload and measure hit/miss latency separately.
+
+**Constraints**: Fetch only history MOEX ISS makes available without subscription credentials; never send subscriber credentials. Full available history may require multiple sequential upstream requests. Use an upstream request timeout and bounded response handling; any timeout, denied request, or failed page fails the request rather than returning partial history. Select the primary board by trading date from MOEX listing history. Populate the response's `facevalue` property from the current board-specific `LOTSIZE` reference for the board selected on each trading date; do not use `FACEVALUE` or require historical LOTSIZE. Return `null` when that selected board's current LOTSIZE is unavailable. Build and ship for Linux amd64; arm64 remains supported for native development.
+
+**Scale/Scope**: One ticker per request, all daily history MOEX ISS returns without subscription credentials across the primary board applicable on each date, no query parameters, durable persistence, or pagination in the public API. Cache memory must be bounded; entries are process-local and may be rebuilt after restart. No stale response is served on an upstream error.
+
+## Constitution Check
+
+- **REST API Contracts First**: Pass. The endpoint, JSON response, ordering, errors, and OpenAPI contract are documented.
+- **Documentation Is Part of Delivery**: Pass. OpenAPI and a validation quickstart are included.
+- **Clear Microservice Boundaries**: Pass. This is one independently deployable MOEX history service with a named upstream dependency.
+- **Compatibility and Change Management**: Pass. The route is versioned under `/v1`; changes must preserve this response or define migration/versioning.
+- **Practical Quality and Operability**: Pass with design requirements for actionable errors, structured logs including request duration and cache hit/miss, health/readiness endpoints, fixture-based automated checks, latency acceptance measurement, and architecture-specific container validation.
+- **Private-network security posture**: Pass. No application authentication is introduced by this feature. The service makes unauthenticated MOEX ISS requests and does not use subscriber credentials.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/001-moex-ticker-update/
+├── plan.md
+├── research.md
+├── data-model.md
+├── quickstart.md
+├── contracts/
+│   └── openapi.yaml
+└── tasks.md                 # Generated by $speckit-tasks
+```
+
+### Source Code (repository root)
+
+```text
+Cargo.toml
+Cargo.lock
+Dockerfile
+.dockerignore
+src/
+├── main.rs                  # configuration, HTTP listener, app state
+├── cache.rs                 # bounded TTL cache for complete ticker responses
+├── config.rs                # listener, upstream timeout, and cache bounds/TTL
+├── http/
+│   ├── mod.rs
+│   ├── routes.rs            # /v1/moex/{SYMBOL}, cache integration, health/readiness
+│   └── errors.rs            # documented JSON error mapping
+├── moex/
+│   ├── mod.rs
+│   ├── client.rs            # unauthenticated ISS transport, timeout, pagination, current board LOTSIZE lookup
+│   ├── board.rs             # primary-board assignment by trading date
+│   ├── mapping.rs           # named source-column mapping and nulls
+│   ├── models.rs            # ISS response types
+│   └── validation.rs        # symbol validation
+└── domain.rs                # ticker and daily-record response models
+tests/
+├── api_contract.rs
+├── api_errors.rs
+├── moex_client.rs
+├── moex_mapping.rs
+└── fixtures/moex/
+    ├── history-page.json
+    ├── history-empty.json
+    ├── history-multi-page.json
+    ├── board-listing.json
+    └── security-description.json
+```
+
+**Structure Decision**: Keep one Rust web-service application. Runtime routes, source integration, per-date board/reference selection, and response mapping are separated into small modules while remaining in one deployable microservice. The Dockerfile must not hard-code an architecture-specific runtime library path; Buildx cross-compiles the executable for each target and selects the matching distroless runtime.
+
+**Research Gate**: Pass. The response field mapping uses current board-specific `LOTSIZE` from the primary board selected for each trading date, as clarified by the user. Docker architecture is planned for Buildx `linux/amd64` and `linux/arm64` targets without architecture-specific runtime library paths.
+
+## Complexity Tracking
+
+No constitution violations or additional projects are required.

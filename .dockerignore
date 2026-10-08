@@ -1,0 +1,11 @@
+.git
+.github
+.specify
+.agents
+specs
+/target
+.dockerignore
+*.log*
+.env*
+coverage/
+tests/

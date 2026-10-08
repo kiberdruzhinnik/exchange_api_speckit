@@ -1,8 +1,8 @@
 <!--
 Sync Impact Report
-Version change: uninitialized scaffold → 1.0.0
-Modified principles: none; initial constitution
-Added sections: REST API Standards; Service Architecture and Development Workflow
+Version change: 1.0.0 → 1.1.0
+Modified principles: V. Practical Quality and Operability (expanded with final-build Semgrep and Trivy gates)
+Added sections: none
 Removed sections: none
 Follow-up TODOs: confirm original ratification date
 -->
@@ -39,7 +39,11 @@ Services MUST provide actionable error responses and enough logging to diagnose 
 and inter-service problems. Implementation and operational complexity MUST be proportionate to the
 service's purpose. Automated checks MUST cover important API behavior and service boundaries;
 the checks selected for a change MUST be documented when they cannot run in the development
-environment.
+environment. A final build MUST run Semgrep source analysis and Trivy vulnerability scans against
+the built deliverable. All Semgrep findings MUST be resolved before work is declared complete.
+Every Trivy finding rated High or Critical for which a fix is available MUST be fixed before work
+is declared complete. Scan results and any unavailable scan or fix MUST be documented with the
+reason and affected artifact.
 
 ## REST API Standards
 
@@ -74,4 +78,4 @@ rationale. Exceptions MUST identify the affected service or API and any follow-u
 compliance. Implementation plans and reviews MUST verify that API documentation, compatibility,
 service ownership, and operational guidance are addressed where relevant.
 
-**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE): confirm original adoption date | **Last Amended**: 2026-10-07
+**Version**: 1.1.0 | **Ratified**: TODO(RATIFICATION_DATE): confirm original adoption date | **Last Amended**: 2026-10-08

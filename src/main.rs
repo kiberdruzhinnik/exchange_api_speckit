@@ -1,6 +1,8 @@
 use exchange_api::{
     AppState, cache_store::CacheStore, config::AppConfig, http::router, moex::client::MoexClient,
+    shutdown::run_until_shutdown,
 };
+use std::{future::IntoFuture, time::Duration};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -28,7 +30,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(config.listen_addr).await?;
 
     tracing::info!(address = %config.listen_addr, "starting exchange API");
-    axum::serve(listener, app).await?;
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        })
+        .into_future();
+    let signal = async move {
+        tokio::signal::ctrl_c().await?;
+        tracing::info!("received Ctrl+C (SIGINT)");
+        let _ = shutdown_tx.send(());
+        Ok::<(), std::io::Error>(())
+    };
+
+    run_until_shutdown(server, signal, Duration::from_secs(30)).await?;
     Ok(())
 }
 

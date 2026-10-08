@@ -67,6 +67,19 @@ A client receives a clear, documented response when the symbol is invalid or MOE
 2. **Given** MOEX ISS is unavailable or returns an unsuccessful response, **When** a client requests ticker history, **Then** the service returns a server-side dependency error using the standard documented error representation and does not present the failure as an empty history.
 3. **Given** MOEX ISS is unavailable or returns malformed trade data, **When** a client requests `/v1/moex/<SYMBOL>/quote`, **Then** the service returns the documented server-side dependency error and does not present the failure as a valid no-trade response.
 
+### User Story 3 - Stop the service with Ctrl+C (Priority: P2)
+
+An operator can interrupt the running service and have it stop accepting new work and exit cleanly.
+
+**Why this priority**: Operators need a predictable way to stop the service during local use and deployment shutdown.
+
+**Independent Test**: Start the service, send Ctrl+C (SIGINT), and verify it stops accepting new requests, allows in-flight work to finish, and exits within 30 seconds.
+
+**Acceptance Scenarios**:
+
+1. **Given** the service is running and handling requests, **When** an operator sends Ctrl+C, **Then** the service stops accepting new requests, allows in-flight work to complete, and terminates within 30 seconds.
+2. **Given** an in-flight request has not completed before the 30-second shutdown deadline, **When** the deadline expires, **Then** the service cancels the remaining work and terminates.
+
 ### Edge Cases
 
 - Symbol is empty, malformed, or contains characters outside the supported ticker format.
@@ -76,6 +89,7 @@ A client receives a clear, documented response when the symbol is invalid or MOE
 - The upstream returns records across a date boundary; emitted timestamps remain normalized to UTC.
 - MOEX ISS has no latest trade data for a recognized ticker; return a successful one-element quote array with all six fields null rather than treating it as an upstream failure.
 - MOEX ISS is unavailable or returns malformed latest-trade data; return the documented dependency error rather than a null-filled quote array.
+- Ctrl+C arrives while requests are active; the service stops accepting new requests and terminates within the bounded shutdown period, canceling unfinished work at the deadline.
 
 ## Requirements *(mandatory)*
 
@@ -96,6 +110,7 @@ A client receives a clear, documented response when the symbol is invalid or MOE
 - **FR-013**: Previously retrieved ticker history MUST survive application restarts for its applicable freshness period. When history is no longer fresh, System MUST retrieve fresh history from MOEX ISS before returning it and MUST NOT return expired history as current.
 - **FR-014**: `GET /v1/moex/{SYMBOL}/quote` MUST fetch the most recent executed trade for the requested ticker from MOEX ISS on every request and MUST NOT reuse previously fetched quote data. It MUST return a one-element JSON array with the same six fields as a history record: `date` (ISO 8601 UTC timestamp or null), `close` (number or null), `high` (number or null), `low` (number or null), `volume` (number or null), and `facevalue` (number or null). For a trade, `date` MUST contain the UTC execution time, `close` the trade price, and `volume` the traded size; `high`, `low`, and `facevalue` MUST be null. If MOEX ISS has no latest trade data for a recognized ticker, the endpoint MUST return `200` with one array record whose six fields are all null. If MOEX ISS is unavailable, returns an unsuccessful response, or provides malformed trade data, the endpoint MUST return the documented server-side dependency error.
 - **FR-015**: The release process MUST build a Linux amd64 container image. AMD64 architecture acceptance MUST be satisfied by a successful image build and MUST NOT require starting the image or exercising service routes on amd64.
+- **FR-016**: When the service receives Ctrl+C (SIGINT), it MUST stop accepting new requests, allow in-flight work to finish, and terminate within 30 seconds. Any work still in flight at the deadline MUST be canceled.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -115,6 +130,7 @@ A client receives a clear, documented response when the symbol is invalid or MOE
 - **SC-006**: After restarting an application instance, unexpired history remains available without a full-history refetch, while each request to `/v1/moex/{SYMBOL}/quote` fetches fresh quote data from MOEX ISS rather than returning a cached quote.
 - **SC-007**: The quote endpoint returns a one-element history-shaped array containing the latest trade's UTC execution time, price, and size in `date`, `close`, and `volume`, with `high`, `low`, and `facevalue` null; if no trade is available, it returns one record with all six fields null.
 - **SC-008**: A Linux amd64 container image builds successfully. AMD64 acceptance requires build success only; runtime startup and endpoint checks on amd64 are not required.
+- **SC-009**: After Ctrl+C is sent to a running service, it stops accepting new requests and exits within 30 seconds, completing in-flight work where possible and canceling any work left at the deadline.
 
 ## Assumptions
 
@@ -127,3 +143,4 @@ A client receives a clear, documented response when the symbol is invalid or MOE
 - The project-wide standard documented error representation applies to invalid symbols and upstream failures.
 - AMD64 compatibility is verified by successfully building the Linux amd64 container image; running or testing that image on amd64 is outside acceptance scope.
 - The endpoint is intended for the project's private-network deployment described in its constitution.
+- Ctrl+C requests a graceful shutdown with a 30-second window for in-flight work; work remaining at the deadline is canceled.

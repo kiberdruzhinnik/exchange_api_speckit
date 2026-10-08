@@ -52,6 +52,13 @@
 - **Alternatives considered**: Build only for the developer host, use a general-purpose runtime, or copy an architecture-specific shared library into the image.
 - **References**: [Docker multi-platform builds](https://docs.docker.com/build/building/multi-platform/), [Docker multi-stage builds](https://docs.docker.com/get-started/docker-concepts/building-images/multi-stage-builds/), [Distroless supported architectures](https://github.com/GoogleContainerTools/distroless/blob/main/README.md), [Distroless cc image](https://github.com/GoogleContainerTools/distroless/blob/main/cc/README.md).
 
+### Bounded SIGINT shutdown
+
+- **Decision**: Handle Ctrl+C with Tokio's signal support and Axum graceful shutdown. Once SIGINT is received, stop accepting new connections and allow in-flight requests and owned background work to finish for at most 30 seconds. Track or otherwise retain control of spawned work so work still active at the deadline can be cancelled before process exit. Log the signal, drain result, and deadline cancellation outcome.
+- **Rationale**: Axum's graceful-shutdown API stops serving after the supplied future completes and its example waits for outstanding requests. Tokio recommends separating signal detection, notifying tasks, and waiting for tasks. A deadline is required so stuck upstream or client work cannot keep the service alive indefinitely. Tokio timeout cancels by dropping its future, so detached or independently spawned tasks must also be tracked/cancelled; merely timing out the top-level serve future is not sufficient evidence that all work has stopped.
+- **Alternatives considered**: Rely on the operating system's default SIGINT termination (does not drain requests); wait indefinitely for graceful completion (can hang); time out only the serve future without controlling child tasks (does not guarantee that spawned work ends).
+- **References**: [Tokio graceful shutdown guide](https://tokio.rs/tokio/topics/shutdown), [Tokio `ctrl_c`](https://docs.rs/tokio/latest/tokio/signal/fn.ctrl_c.html), [Axum graceful-shutdown API](https://docs.rs/axum/latest/axum/serve/struct.Serve.html), [Axum graceful-shutdown example](https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs), [Tokio timeout cancellation behavior](https://docs.rs/tokio/latest/tokio/time/fn.timeout.html).
+
 ## Resolved Decisions
 
 - **Language/runtime**: Existing Rust stable service, edition 2024, MSRV 1.85; Axum/Tokio.
@@ -61,4 +68,5 @@
 - **MOEX data source**: Production `https://iss.moex.com/iss`, unauthenticated, with no subscriber credentials.
 - **Performance profile**: 10 concurrent clients, 10 requests per second total; p95 measured end to end on each route and combined.
 - **Container**: Docker/Buildx, distroless Debian 13 nonroot, Linux amd64 required and arm64 supported.
+- **Shutdown**: Ctrl+C stops accepting new connections, drains in-flight work, and exits within 30 seconds; remaining tracked work is cancelled at the deadline.
 - **Validation**: Cargo unit/integration/contract checks, API contract validation, persistence/restart acceptance, production-data and latency measurement with the locally compiled binary, successful image builds for Linux amd64 and arm64, arm64 runtime smoke validation, and final Semgrep and Trivy scans. AMD64 acceptance requires image build success only; amd64 runtime startup and endpoint checks are outside acceptance.

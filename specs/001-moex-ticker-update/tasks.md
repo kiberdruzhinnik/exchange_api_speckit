@@ -22,7 +22,7 @@
 
 ## Phase 2: Foundational
 
-**Purpose**: Establish configuration, shared response types, persistent-store startup, and application state required by both stories.
+**Purpose**: Establish configuration, shared response types, persistent-store startup, and application state required by all user stories.
 
 - [X] T002 Add validated configuration for upstream timeout and response limits, history TTL and byte limits, and SQLite database path in `src/config.rs`.
 - [X] T003 Define shared history and quote response record types, preserving all six fields and nullable quote `date`, in `src/domain.rs`.
@@ -31,7 +31,7 @@
 - [X] T006 Map documented client, upstream dependency, and history-store errors to the shared JSON error envelope in `src/http/errors.rs`.
 - [X] T007 Expose liveness and readiness routes, with readiness reflecting required startup dependencies, in `src/http/routes.rs` and `src/http/mod.rs`.
 
-**Checkpoint**: Validated startup, shared state, operational routes, and standard error mapping are available to both stories.
+**Checkpoint**: Validated startup, shared state, operational routes, and standard error mapping are available to all user stories.
 
 ## Phase 3: User Story 1 - Retrieve ticker history and latest trade (Priority: P1) 🎯 MVP
 
@@ -83,9 +83,30 @@
 
 **Checkpoint**: Invalid input, valid empty data, upstream failures, and store failures are distinguishable and match the API contract.
 
-## Phase 5: Polish and Cross-Cutting Acceptance
+## Phase 5: User Story 3 - Stop the service with Ctrl+C (Priority: P2)
 
-**Purpose**: Verify persistence, performance, container builds, documentation, and final security scans across both stories.
+**Goal**: On SIGINT, stop accepting new requests, drain in-flight work, and exit within 30 seconds, cancelling work still active at the deadline.
+
+**Independent Test**: Start the local service with controlled in-flight requests, send SIGINT, verify new requests are no longer accepted, verify a request can complete during the drain window, and verify unfinished work is cancelled and the process exits by 30 seconds.
+
+### Tests for User Story 3
+
+- [X] T042 [US3] Add process-level SIGINT acceptance coverage for stopping new connections, draining a controlled in-flight request, and exiting within 30 seconds in `tests/shutdown.rs`.
+- [X] T043 [US3] Add a controlled non-completing request case that verifies in-flight work is cancelled at the 30-second deadline in `tests/shutdown.rs`.
+
+### Implementation for User Story 3
+
+- [X] T044 [US3] Handle Tokio Ctrl+C and initiate Axum graceful shutdown, stopping acceptance of new connections and logging the shutdown signal in `src/main.rs`.
+- [X] T045 [US3] Implement a bounded shutdown coordinator that waits for Axum graceful serving to finish and returns at the 30-second deadline so Tokio runtime teardown cancels remaining connection tasks in `src/shutdown.rs`; expose and wire it from `src/main.rs`.
+- [X] T046 [US3] Document Ctrl+C behavior, the 30-second drain limit, and the shutdown acceptance procedure in `specs/001-moex-ticker-update/quickstart.md`.
+
+**Checkpoint**: The process responds to SIGINT by refusing new work, allowing in-flight work to finish where possible, and cancelling unfinished work before exiting within 30 seconds.
+
+---
+
+## Phase 6: Polish and Cross-Cutting Acceptance
+
+**Purpose**: Verify persistence, performance, container builds, documentation, and final security scans across all user stories.
 
 - [X] T030 Add structured request-duration and history cache/store outcome logging in `src/http/routes.rs` and `src/main.rs`.
 - [X] T031 Add a production ISS acceptance script using the local binary, 10 concurrent clients, and 10 total requests per second; measure complete-response p95 separately for history, quote, and combined workloads, including cache hits, cold misses, and expirations in `scripts/measure-moex-latency.sh` and `scripts/measure-moex-latency.py`.
@@ -104,21 +125,25 @@
 ### Phase Dependencies
 
 - **Setup (Phase 1)**: T001 has no code dependencies.
-- **Foundational (Phase 2)**: T002–T007 depend on setup and block both user stories.
+- **Foundational (Phase 2)**: T002–T007 depend on setup and block all user stories.
 - **User Story 1 (Phase 3)**: Depends on Phase 2. Fixture and test tasks T008–T012 can proceed in parallel; implementation follows the shared contracts.
 - **User Story 2 (Phase 4)**: Depends on the shared route and ISS client from US1.
-- **Polish (Phase 5)**: Depends on both stories. T031 and container work can proceed in parallel; final scans follow the final image build and any fixes.
+- **User Story 3 (Phase 5)**: Depends on Phase 2 and the running service entry point from US1; shutdown behavior is independently testable.
+- **Polish (Phase 6)**: Depends on desired stories being complete. T031 and container work can proceed independently; final checks and scans follow implementation and the final image build.
+- **Convergence (Phase 7)**: T041 and T047 record or rerun acceptance work; T047 depends on US3 and Phase 6 completion.
 
 ### User Story Dependencies
 
 - **US1 (P1)**: Depends on Setup and Foundational phases; delivers the history and quote endpoints as MVP.
 - **US2 (P2)**: Depends on US1's shared route and ISS client; adds distinct invalid-input and failure behavior.
+- **US3 (P2)**: Depends on the foundational Tokio/Axum application and is otherwise independent of the history and quote behaviors.
 
 ### Parallel Opportunities
 
 - T008–T012 target separate fixture/test files and can be authored in parallel.
 - T013, T017, and T020 target separate model, cache-store, and quote-mapping concerns, subject to shared client integration.
 - T031 measurement tooling and T033 container build work can proceed independently after interfaces stabilize.
+- T042 and T043 both target `tests/shutdown.rs` and should be authored together; implementation T044/T045 follows those acceptance cases.
 
 ## Parallel Example: User Story 1
 
@@ -128,6 +153,13 @@ Task: T009 Add named-column mapping checks in tests/moex_mapping.rs
 Task: T010 Add history API contract checks in tests/api_contract.rs and tests/api_contract_schema.rs
 Task: T011 Add quote contract checks in tests/api_quote.rs
 Task: T012 Add durable-cache checks in tests/cache_store.rs
+```
+
+## Parallel Example: User Story 3
+
+```text
+Task: T042 Add SIGINT acceptance coverage for stopping acceptance and draining requests in tests/shutdown.rs
+Task: T043 Add shutdown-deadline cancellation coverage in tests/shutdown.rs
 ```
 
 ## Implementation Strategy
@@ -144,15 +176,17 @@ Task: T012 Add durable-cache checks in tests/cache_store.rs
 1. Complete Setup and Foundational phases.
 2. Deliver US1 as the first usable API increment.
 3. Add US2's documented validation and error distinctions.
-4. Complete latency, restart, architecture build, and security-scan acceptance.
+4. Add US3's bounded graceful shutdown behavior.
+5. Complete latency, restart, architecture build, and security-scan acceptance.
 
 ## Notes
 
 - `[P]` marks work on separate files with no unfinished prerequisites.
-- `[US1]` and `[US2]` map tasks to `spec.md` user stories.
-- Task completion states reflect the implementation record; T040 aligns AMD64 acceptance documentation, and T041 records bounded-scheduler behavior and the actual production issue rates.
+- `[US1]`, `[US2]`, and `[US3]` map tasks to `spec.md` user stories.
+- Task completion states reflect the implementation record; T040 aligns AMD64 acceptance documentation, T041 records bounded-scheduler behavior and actual production issue rates, and T042–T047 implement, document, and validate SIGINT shutdown.
 - Each task line has a checkbox, sequential ID, applicable story label, imperative action, and target file path.
 
-## Phase 6: Convergence
+## Phase 7: Convergence
 
 - [X] T041 Bound latency workload scheduling so slow requests cannot accumulate in an executor queue and create catch-up bursts, then rerun and record production local-binary history, quote, and combined profiles under a 10-client, 10-requests-per-second schedule in `scripts/measure-moex-latency.py` and `specs/001-moex-ticker-update/quickstart.md` per SC-005/T031/T038 (partial; history and combined runs were capacity-limited and actual rates are documented).
+- [X] T047 Run formatting, lint, unit/integration and OpenAPI checks, verify the SIGINT drain and deadline scenarios, rebuild the Linux amd64 image, run Semgrep and Trivy on the final deliverable, resolve all Semgrep findings and fixable High/Critical Trivy findings, and record outcomes in `specs/001-moex-ticker-update/quickstart.md`.

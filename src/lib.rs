@@ -4,6 +4,7 @@ pub mod config;
 pub mod domain;
 pub mod http;
 pub mod moex;
+pub mod shutdown;
 
 use moex::client::MoexClient;
 

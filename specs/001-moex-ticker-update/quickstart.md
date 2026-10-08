@@ -29,6 +29,14 @@ The service fetches the latest trade from MOEX ISS for each request and does not
 
 Known history comparison case: `SBER` on `2026-10-06`; expected `facevalue` is `1`.
 
+## Graceful shutdown
+
+Start the service locally, then press Ctrl+C in the terminal running it. The service stops accepting new connections, lets in-flight requests finish, and exits within 30 seconds. Work still active at the deadline is cancelled. The grace-period timer starts when SIGINT is received.
+
+Automated shutdown acceptance runs with `cargo test --test shutdown`. It verifies SIGINT handling in a local service process, completion of a controlled in-flight HTTP request after shutdown starts, and cancellation of work when a short test deadline expires.
+
+Shutdown implementation validation on 2026-10-08: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` passed (38 tests). The final `linux/amd64` and `linux/arm64` distroless images built successfully. The arm64 image returned ready status and exited with status 0 after SIGINT. Semgrep `auto` scanned source, tests, workflow, and container build files with zero findings after pinning GitHub Actions to commit SHAs. Trivy found zero fixable High or Critical vulnerabilities in either image.
+
 ## Run automated checks
 
 ```sh

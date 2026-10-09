@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-08
 
-**Status**: Draft
+**Status**: Sealed
 
 **Input**: User description: "implement SPBEX ticker update from SYMBOL from /v1/sbpex/<SYMBOL> REST API, which should be reused from https://github.com/kiberdruzhinnik/go-exchange-api/blob/main/api/spbex.go and return something like JSON: [{\"date\":\"2013-03-25T00:00:00Z\",\"close\":73.35,\"high\":75.05,\"low\":73.21,\"volume\":120300,\"facevalue\":1},...]. make sure to fetch latest quote via /v1/spbex/<SYMBOL>/quote like in MOEX"
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-09
 
-**Status**: Draft
+**Status**: Sealed
 
 **Input**: User description: "make another route /v1/cbr/<SYMBOL> which fetches history of currency from central bank of russia and /v1/cbr/<SYMBOL/quote which fetches current rate for today. <SYMBOL> must be one of supported currencies from central bank of russia, example: usd, cny, eur and etc."
 

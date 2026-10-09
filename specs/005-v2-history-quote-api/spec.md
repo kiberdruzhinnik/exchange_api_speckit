@@ -14,6 +14,7 @@
 
 - Q: Should each v2 route be measured separately at 10 total requests per second with 10 concurrent clients? → A: Run six separate route profiles, one for each v2 provider history and quote route, each at 10 total requests per second with 10 concurrent clients; at least 95% of successful responses in each profile must complete in under one second.
 - Q: When a valid history request gets a successful response with no records, should v2 return `[]` and have an explicit acceptance scenario and API test for that result? → A: Return `[]` and explicitly test this outcome in the v2 history acceptance scenario and API tests.
+- Q: Should SC-005 exclude the first uncached MOEX history request from its one-second target, while requiring subsequent requests served from the completed cache to meet the target? → A: Report the initial MOEX full-fetch latency separately; apply SC-005’s one-second target to subsequent cached MOEX history requests. Keep the existing target for the other five v2 routes.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -77,7 +78,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 - **SC-002**: Each supported provider-symbol combination can retrieve a current quote through `GET /v2/quote/{PROVIDER}/{SYMBOL}` with the established response shape and freshness behavior.
 - **SC-003**: All v1 history and quote routes continue to return their existing documented outcomes during the v2 migration.
 - **SC-004**: Invalid, unsupported, ambiguous, and unavailable-symbol cases return documented outcomes without serving data from an unintended provider.
-- **SC-005**: In a separate workload profile for each of the six v2 provider history and quote routes, at 10 total requests per second with 10 concurrent clients, at least 95% of successful responses complete in under one second.
+- **SC-005**: In a separate workload profile for each of the six v2 provider history and quote routes, at 10 total requests per second with 10 concurrent clients, at least 95% of successful responses complete in under one second. For MOEX history, measure the initial uncached full-history fetch separately and report its latency and outcome; apply the one-second criterion to a separate profile run after the full history has been populated in the cache, measuring subsequent cached history requests.
 
 ## Assumptions
 

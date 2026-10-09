@@ -146,6 +146,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            moex:
+              value:
+                error:
+                  code: moex_unavailable
+                  message: MOEX market data is temporarily unavailable
+            spbex:
+              value:
+                error:
+                  code: spbex_unavailable
+                  message: SPBEX market data is temporarily unavailable
+            cbr:
+              value:
+                error:
+                  code: cbr_unavailable
+                  message: Bank of Russia currency data is temporarily unavailable
     HistoryStoreUnavailable:
       description: History could not be read from or saved to the persistent store (HTTP 503).
       content:

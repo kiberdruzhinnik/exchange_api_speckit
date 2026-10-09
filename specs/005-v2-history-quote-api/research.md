@@ -24,11 +24,11 @@
 - **Rationale**: The service's public contract is maintained in one canonical OpenAPI document. V2 adds routes but reuses the current schemas and provider error outcomes.
 - **Alternatives considered**: Keep v2 documentation only in a feature-local contract (leaves the canonical consumer contract incomplete); replace v1 OpenAPI paths (misstates the selected compatibility behavior).
 
-## Decision 5: Apply the existing latency gate to the v2 operations
+## Decision 5: Apply the latency gate to warm-cache v2 history requests
 
-- **Decision**: Measure the six v2 provider-specific history and quote operations at 10 total requests per second with 10 concurrent clients; at least 95% of successful responses on each route must complete in under one second.
-- **Rationale**: The user confirmed the existing service target applies to v2, so the new routes receive the same measurable performance gate as existing routes.
-- **Alternatives considered**: Exempt v2 from the latency gate (would leave the new public contract without the established service performance target); define a different number (not requested and would weaken consistency without evidence).
+- **Decision**: Run a separate profile for each of the six v2 provider-specific history and quote operations at 10 total requests per second with 10 concurrent clients. At least 95% of successful responses in each profile must complete in under one second. For MOEX history, report the initial uncached full-history fetch latency and outcome separately; run its gated profile only after the full history is populated, measuring subsequent cached requests.
+- **Rationale**: MOEX's first full-history fetch is paginated and can take longer than one second, while the clarified requirement is that subsequent requests served from the populated history cache meet the existing latency target. Separate reporting keeps cold-start cost visible without conflating it with cached request latency.
+- **Alternatives considered**: Apply the one-second gate to MOEX's paginated initial fetch (mixes cache initialization with steady-state latency); exempt all MOEX history requests (would leave cached requests without a measurable target); exempt initial history fetches for every provider (not requested).
 
 ## Decision 6: Leave storage and configuration unchanged
 

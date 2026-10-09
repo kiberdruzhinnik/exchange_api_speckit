@@ -22,7 +22,7 @@ Add provider-qualified v2 routes for history and current quotes while preserving
 
 **Project Type**: Existing single Rust REST microservice
 
-**Performance Goals**: Measure each of the six v2 provider history and quote routes in a separate workload profile. At 10 total requests per second with 10 concurrent clients per profile, at least 95% of successful responses must complete in under one second.
+**Performance Goals**: Measure each of the six v2 provider history and quote routes in a separate workload profile at 10 total requests per second with 10 concurrent clients; at least 95% of successful responses in each profile must complete in under one second. For MOEX history, measure and report the initial uncached paginated full fetch separately, then apply the target to subsequent history requests after the full history is populated in the cache.
 
 **Constraints**: New paths are `/v2/history/{PROVIDER}/{SYMBOL}` and `/v2/quote/{PROVIDER}/{SYMBOL}`. `{PROVIDER}` is exactly one of `moex`, `spbex`, or `cbr`. Preserve v1 routes, provider-specific symbol validation, response mappings, history lifecycle, quote freshness, error behavior, and health/readiness behavior. Unknown providers return HTTP 400 with the shared error envelope and `invalid_provider` code. No configuration or persistence changes.
 
@@ -95,5 +95,5 @@ Research decisions and alternatives are recorded in [research.md](research.md). 
 - V1 routes and response contracts remain intact while v2 is added: **PASS**.
 - The OpenAPI contract covers provider selection, symbols, success and error responses for both versions: **PASS**.
 - Route tests and contract-schema checks cover the new dispatch paths and compatibility: **PASS**.
-- The one-second p95 acceptance target is explicitly assigned to each v2 provider operation: **PASS**.
+- The one-second acceptance target is explicitly assigned to each v2 provider operation; MOEX's initial uncached full fetch is reported separately and its populated-cache profile must meet the target: **PASS**.
 - No new storage, configuration, authentication, or service boundary is introduced: **PASS**.

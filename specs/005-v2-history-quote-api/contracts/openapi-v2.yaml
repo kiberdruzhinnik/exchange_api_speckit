@@ -1,0 +1,154 @@
+openapi: 3.1.0
+info:
+  title: Exchange API v2 History and Quote Routes
+  version: 2.0.0
+  description: Provider-qualified v2 routes. Existing v1 provider-specific routes remain available.
+servers:
+  - url: /
+paths:
+  /v2/history/{PROVIDER}/{SYMBOL}:
+    get:
+      operationId: getProviderHistoryV2
+      summary: Get complete history for a provider symbol
+      description: Returns the selected provider's complete retained history, preserving its existing mappings, ordering, incremental refresh behavior, and error outcomes.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: Complete ordered history, or an empty array when no records are available.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyMarketRecord'
+        '400':
+          $ref: '#/components/responses/InvalidV2PathParameter'
+        '502':
+          $ref: '#/components/responses/ProviderUnavailable'
+        '503':
+          $ref: '#/components/responses/HistoryStoreUnavailable'
+  /v2/quote/{PROVIDER}/{SYMBOL}:
+    get:
+      operationId: getProviderCurrentQuoteV2
+      summary: Get the current quote for a provider symbol
+      description: Fetches a current quote according to the selected provider's existing meaning and freshness behavior. Quote responses are not cached.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: Exactly one current quote record, including the provider's existing no-data representation.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestQuoteRecord'
+        '400':
+          $ref: '#/components/responses/InvalidV2PathParameter'
+        '502':
+          $ref: '#/components/responses/ProviderUnavailable'
+components:
+  parameters:
+    Provider:
+      name: PROVIDER
+      in: path
+      required: true
+      description: Selects the data source and provider-specific behavior.
+      schema:
+        type: string
+        enum: [moex, spbex, cbr]
+    Symbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: Ticker or currency code. The selected provider applies its existing normalization and validation rules.
+      schema:
+        type: string
+        minLength: 1
+  schemas:
+    DailyMarketRecord:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: string
+          format: date-time
+        close:
+          type: [number, 'null']
+        high:
+          type: [number, 'null']
+        low:
+          type: [number, 'null']
+        volume:
+          type: [number, 'null']
+        facevalue:
+          type: [number, 'null']
+    LatestQuoteRecord:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: [string, 'null']
+          format: date-time
+        close:
+          type: [number, 'null']
+        high:
+          type: [number, 'null']
+        low:
+          type: [number, 'null']
+        volume:
+          type: [number, 'null']
+        facevalue:
+          type: [number, 'null']
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [invalid_provider, invalid_symbol, moex_unavailable, spbex_unavailable, cbr_unavailable, history_store_unavailable]
+            message:
+              type: string
+  responses:
+    InvalidV2PathParameter:
+      description: Provider or symbol path value is invalid (HTTP 400).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidProvider:
+              value:
+                error:
+                  code: invalid_provider
+                  message: Provider is unsupported
+            invalidSymbol:
+              value:
+                error:
+                  code: invalid_symbol
+                  message: Symbol is malformed or unsupported
+    ProviderUnavailable:
+      description: The selected provider failed or returned unusable data (HTTP 502); the existing provider-specific code is retained.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    HistoryStoreUnavailable:
+      description: History could not be read from or saved to the persistent store (HTTP 503).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -1,16 +1,11 @@
 use crate::cache_store::CacheStore;
 use bytes::Bytes;
 use moka::future::Cache;
-use std::{
-    future::Future,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
 #[derive(Clone)]
 struct CachedResponse {
     body: Bytes,
-    expires_at: Instant,
     outcome: CacheOutcome,
 }
 
@@ -36,11 +31,10 @@ pub struct HistoryCache {
     entries: Cache<String, Result<CachedResponse, Arc<String>>>,
     max_bytes: u64,
     store: Option<CacheStore>,
-    ttl: Duration,
 }
 
 impl HistoryCache {
-    pub fn new(ttl: Duration, max_bytes: u64) -> Self {
+    pub fn new(_ttl: Duration, max_bytes: u64) -> Self {
         let entries = Cache::builder()
             .max_capacity(max_bytes)
             .weigher(
@@ -49,13 +43,11 @@ impl HistoryCache {
                     Err(_) => 1,
                 },
             )
-            .time_to_live(ttl)
             .build();
         Self {
             entries,
             max_bytes,
             store: None,
-            ttl,
         }
     }
 
@@ -67,11 +59,7 @@ impl HistoryCache {
 
     pub async fn get(&self, key: &str) -> Option<Bytes> {
         match self.entries.get(key).await {
-            Some(Ok(response)) if response.expires_at > Instant::now() => Some(response.body),
-            Some(Ok(_)) => {
-                self.entries.invalidate(key).await;
-                None
-            }
+            Some(Ok(response)) => Some(response.body),
             Some(Err(_)) | None => None,
         }
     }
@@ -91,7 +79,6 @@ impl HistoryCache {
         let cache_key = key.clone();
         let store_key = cache_key.clone();
         let store = self.store.clone();
-        let ttl = self.ttl;
         let value = self
             .entries
             .get_with(key, async move {
@@ -100,7 +87,6 @@ impl HistoryCache {
                         Ok(Some(entry)) => {
                             return Ok(CachedResponse {
                                 body: entry.body,
-                                expires_at: Instant::now() + entry.fresh_for,
                                 outcome: CacheOutcome::Persistent,
                             });
                         }
@@ -111,13 +97,12 @@ impl HistoryCache {
                 let body = fetch().await.map_err(Arc::new)?;
                 if let Some(store) = &store {
                     store
-                        .put(&store_key, &body, ttl)
+                        .put(&store_key, &body, Duration::ZERO)
                         .await
                         .map_err(|error| Arc::new(format!("cache store: {error}")))?;
                 }
                 Ok(CachedResponse {
                     body,
-                    expires_at: Instant::now() + ttl,
                     outcome: CacheOutcome::Miss,
                 })
             })
@@ -183,7 +168,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expires_entries_and_does_not_retain_failures() {
+    async fn does_not_expire_entries_and_does_not_retain_failures() {
         let cache = HistoryCache::new(Duration::from_millis(15), 1024);
         let calls = Arc::new(AtomicUsize::new(0));
         let fail_calls = calls.clone();
@@ -205,15 +190,14 @@ mod tests {
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(25)).await;
-        let expire_calls = calls.clone();
-        cache
+        let hit = cache
             .get_or_fetch("BAD".into(), || async move {
-                expire_calls.fetch_add(1, Ordering::SeqCst);
-                Ok(Bytes::from_static(b"[1]"))
+                panic!("indefinitely retained history should not refetch")
             })
             .await
             .unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(hit.0, Bytes::from_static(b"[]"));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

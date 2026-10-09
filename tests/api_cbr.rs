@@ -65,7 +65,6 @@ fn history_mock() -> Mock {
     Mock::given(method("GET"))
         .and(path(HISTORY_PATH))
         .and(query_param("VAL_NM_RQ", "R01235"))
-        .and(query_param("date_req1", "01/01/1990"))
         .respond_with(
             ResponseTemplate::new(200).set_body_string(include_str!("fixtures/cbr/history.xml")),
         )
@@ -144,9 +143,9 @@ async fn persists_history_across_store_reopen() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("history.sqlite3");
     let server = MockServer::start().await;
-    directory_mock().expect(1).mount(&server).await;
+    directory_mock().expect(2).mount(&server).await;
     currency_list_mock().mount(&server).await;
-    history_mock().expect(1).mount(&server).await;
+    history_mock().expect(2).mount(&server).await;
     let store = CacheStore::open(&path, 1024 * 1024).await.unwrap();
     let first = source(&server, Some(store), Duration::from_secs(30));
     let first_response = first
@@ -172,7 +171,7 @@ async fn persists_history_across_store_reopen() {
         .await
         .unwrap();
     assert_eq!(second_response.status(), StatusCode::OK);
-    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 6);
 }
 
 async fn store_with_insert_failure(path: &Path) -> CacheStore {
@@ -181,7 +180,8 @@ async fn store_with_insert_failure(path: &Path) -> CacheStore {
         .create_if_missing(true);
     let pool = SqlitePool::connect_with(options).await.unwrap();
     sqlx::query("CREATE TABLE history_cache (symbol TEXT PRIMARY KEY NOT NULL, response_body BLOB NOT NULL, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, response_bytes INTEGER NOT NULL)").execute(&pool).await.unwrap();
-    sqlx::query("CREATE TRIGGER fail_history_insert BEFORE INSERT ON history_cache BEGIN SELECT RAISE(ABORT, 'test store failure'); END").execute(&pool).await.unwrap();
+    sqlx::query("CREATE TABLE history_collections (provider TEXT NOT NULL, symbol TEXT NOT NULL, latest_record_date TEXT, last_full_refresh_at INTEGER, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY(provider, symbol))").execute(&pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER fail_history_insert BEFORE INSERT ON history_collections BEGIN SELECT RAISE(ABORT, 'test store failure'); END").execute(&pool).await.unwrap();
     pool.close().await;
     CacheStore::open(path, 1024 * 1024).await.unwrap()
 }

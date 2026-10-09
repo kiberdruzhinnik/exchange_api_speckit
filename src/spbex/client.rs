@@ -14,6 +14,12 @@ pub enum SpbexError {
     InvalidSymbol,
     #[error("SPBEX request failed: {0}")]
     Upstream(String),
+    #[error("SPBEX HTTP {0}")]
+    HttpStatus(u16),
+    #[error("SPBEX transport failure: {0}")]
+    Transport(String),
+    #[error("SPBEX invalid response: {0}")]
+    InvalidData(String),
 }
 
 #[derive(Clone)]
@@ -50,9 +56,20 @@ impl SpbexClient {
     }
 
     pub async fn history(&self, symbol: &str) -> Result<Vec<SourceCandle>, SpbexError> {
+        self.history_since(symbol, None).await
+    }
+
+    pub async fn history_since(
+        &self,
+        symbol: &str,
+        after: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<SourceCandle>, SpbexError> {
         let symbol = normalize_symbol(symbol).ok_or(SpbexError::InvalidSymbol)?;
         let now = unix_seconds();
-        self.fetch(&symbol, 0, now).await
+        let from = after
+            .map(|date| date.timestamp().saturating_add(1))
+            .unwrap_or(0);
+        self.fetch(&symbol, from, now).await
     }
 
     pub async fn latest_candle(&self, symbol: &str) -> Result<Option<SourceCandle>, SpbexError> {
@@ -82,7 +99,7 @@ impl SpbexClient {
             .request_limit
             .acquire()
             .await
-            .map_err(|error| SpbexError::Upstream(error.to_string()))?;
+            .map_err(|error| SpbexError::Transport(error.to_string()))?;
         let endpoint = self
             .base
             .join("reader/marketdata/charts/chistory")
@@ -100,7 +117,7 @@ impl SpbexClient {
             return Err(SpbexError::InvalidSymbol);
         }
         if !status.is_success() {
-            return Err(SpbexError::Upstream(format!("HTTP {status}")));
+            return Err(SpbexError::HttpStatus(status.as_u16()));
         }
         let declared = response.content_length().unwrap_or(0);
         if declared > self.max_response_bytes as u64 {
@@ -113,7 +130,7 @@ impl SpbexClient {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|error| SpbexError::Upstream(error.to_string()))?
+            .map_err(|error| SpbexError::Transport(error.to_string()))?
         {
             if bytes.len().saturating_add(chunk.len()) > self.max_response_bytes {
                 return Err(SpbexError::Upstream(
@@ -123,7 +140,7 @@ impl SpbexClient {
             bytes.extend_from_slice(&chunk);
         }
         serde_json::from_slice(&bytes)
-            .map_err(|error| SpbexError::Upstream(format!("invalid chart JSON: {error}")))
+            .map_err(|error| SpbexError::InvalidData(format!("invalid chart JSON: {error}")))
     }
 }
 

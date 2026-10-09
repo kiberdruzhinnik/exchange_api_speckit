@@ -24,33 +24,64 @@ impl ExchangeProvider for MoexProvider {
         "moex_unavailable"
     }
     async fn history(&self, symbol: &str) -> Result<Vec<DailyMarketRecord>, ProviderError> {
-        build_history(&self.0, symbol).await.map_err(|error| {
+        build_history(&self.0, symbol, None).await.map_err(|error| {
             if error.to_string().starts_with("invalid symbol:") {
                 ProviderError::InvalidSymbol
             } else {
-                ProviderError::Upstream(error.to_string())
+                classify_error(error.to_string())
             }
         })
+    }
+    async fn history_since(
+        &self,
+        symbol: &str,
+        after: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<DailyMarketRecord>, ProviderError> {
+        build_history(&self.0, symbol, after.map(|date| date.date_naive()))
+            .await
+            .map_err(|error| {
+                if error.to_string().starts_with("invalid symbol:") {
+                    ProviderError::InvalidSymbol
+                } else {
+                    classify_error(error.to_string())
+                }
+            })
     }
     async fn quote(&self, symbol: &str) -> Result<LatestQuoteRecord, ProviderError> {
         let value = self.0.latest_trade(symbol).await.map_err(|error| {
             if error.to_string().starts_with("invalid symbol:") {
                 ProviderError::InvalidSymbol
             } else {
-                ProviderError::Upstream(error.to_string())
+                classify_error(error.to_string())
             }
         })?;
-        map_latest_trade(&value).map_err(|error| ProviderError::Upstream(error.to_string()))
+        map_latest_trade(&value).map_err(|error| ProviderError::InvalidData(error.to_string()))
+    }
+}
+
+fn classify_error(message: String) -> ProviderError {
+    if let Some(code) = message
+        .strip_prefix("HTTP ")
+        .and_then(|code| code.parse::<u16>().ok())
+    {
+        ProviderError::HttpStatus {
+            status: code,
+            message,
+        }
+    } else {
+        ProviderError::InvalidData(message)
     }
 }
 
 async fn build_history(
     client: &MoexClient,
     symbol: &str,
+    after: Option<chrono::NaiveDate>,
 ) -> anyhow::Result<Vec<DailyMarketRecord>> {
     let history_client = client.clone();
     let history_symbol = symbol.to_owned();
-    let history_task = tokio::spawn(async move { history_client.history(&history_symbol).await });
+    let history_task =
+        tokio::spawn(async move { history_client.history_since(&history_symbol, after).await });
     let security = match client.security(symbol).await {
         Err(error) => {
             history_task.abort();
@@ -103,6 +134,8 @@ async fn build_history(
         }));
     }
     selected.sort_by_key(|record| record.date);
-    selected.dedup_by_key(|record| record.date);
-    Ok(selected)
+    Ok(selected
+        .into_iter()
+        .filter(|record| after.is_none_or(|date| record.date.date_naive() > date))
+        .collect())
 }

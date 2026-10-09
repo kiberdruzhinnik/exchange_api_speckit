@@ -17,6 +17,12 @@ pub enum CbrError {
     InvalidSymbol,
     #[error("Bank of Russia request failed: {0}")]
     Upstream(String),
+    #[error("Bank of Russia HTTP {0}")]
+    HttpStatus(u16),
+    #[error("Bank of Russia transport failure: {0}")]
+    Transport(String),
+    #[error("Bank of Russia invalid response: {0}")]
+    InvalidData(String),
 }
 
 #[derive(Clone)]
@@ -53,6 +59,14 @@ impl CbrClient {
     }
 
     pub async fn history(&self, symbol: &str) -> Result<DynamicRates, CbrError> {
+        self.history_since(symbol, None).await
+    }
+
+    pub async fn history_since(
+        &self,
+        symbol: &str,
+        after: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<DynamicRates, CbrError> {
         let currency = self.currency(symbol).await?;
         let end_date = chrono::Utc::now().format("%d/%m/%Y").to_string();
         let url = self.endpoint("scripts/XML_dynamic.asp")?;
@@ -60,14 +74,23 @@ impl CbrClient {
             .fetch(
                 url,
                 &[
-                    ("date_req1", HISTORY_START_DATE.to_owned()),
+                    (
+                        "date_req1",
+                        after
+                            .map(|date| {
+                                (date.date_naive() + chrono::Days::new(1))
+                                    .format("%d/%m/%Y")
+                                    .to_string()
+                            })
+                            .unwrap_or_else(|| HISTORY_START_DATE.to_owned()),
+                    ),
                     ("date_req2", end_date),
                     ("VAL_NM_RQ", currency.id),
                 ],
             )
             .await?;
         quick_xml::de::from_reader(bytes.as_ref())
-            .map_err(|error| CbrError::Upstream(format!("invalid history XML: {error}")))
+            .map_err(|error| CbrError::InvalidData(format!("invalid history XML: {error}")))
     }
 
     pub async fn latest(
@@ -153,13 +176,13 @@ impl CbrClient {
             .query(query)
             .send()
             .await
-            .map_err(|error| CbrError::Upstream(error.to_string()))?;
+            .map_err(|error| CbrError::Transport(error.to_string()))?;
         let status = response.status();
         if !status.is_success() {
             if status == StatusCode::NOT_FOUND {
                 return Err(CbrError::Upstream(format!("HTTP {status}")));
             }
-            return Err(CbrError::Upstream(format!("HTTP {status}")));
+            return Err(CbrError::HttpStatus(status.as_u16()));
         }
         if response
             .content_length()
@@ -174,7 +197,7 @@ impl CbrClient {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|error| CbrError::Upstream(error.to_string()))?
+            .map_err(|error| CbrError::Transport(error.to_string()))?
         {
             if bytes.len().saturating_add(chunk.len()) > self.max_response_bytes {
                 return Err(CbrError::Upstream(

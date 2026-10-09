@@ -1,4 +1,5 @@
 use std::{future::Future, io, time::Duration};
+use tokio::task::JoinHandle;
 
 /// Stop accepting connections after the signal future completes and allow the server
 /// future to drain until `grace_period` elapses. When this returns at the deadline,
@@ -31,4 +32,14 @@ where
             }
         }
     }
+}
+
+/// Join a service background task after the shutdown signal has been sent.
+/// The server's grace period is the overall deadline, so this must not add a
+/// second grace period after the server future has drained.
+pub async fn cancel_and_join<T>(task: JoinHandle<T>) {
+    if !task.is_finished() {
+        task.abort();
+    }
+    let _ = task.await;
 }

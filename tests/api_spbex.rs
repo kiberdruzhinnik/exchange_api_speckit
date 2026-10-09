@@ -268,7 +268,7 @@ async fn quote_expands_lookback_and_empty_full_range_returns_one_null_record() {
 #[tokio::test]
 async fn persistent_history_is_reused_after_cache_state_restarts() {
     let server = MockServer::start().await;
-    chart(HISTORY).expect(1).mount(&server).await;
+    chart(HISTORY).expect(2).mount(&server).await;
     let dir = tempdir().unwrap();
     let db = dir.path().join("history.sqlite3");
     {
@@ -323,7 +323,7 @@ async fn persistent_history_is_reused_after_cache_state_restarts() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -342,10 +342,10 @@ async fn history_store_read_and_write_failures_return_503() {
         .await
         .unwrap();
         if fail_write {
-            sqlx::query("CREATE TRIGGER reject_history_insert BEFORE INSERT ON history_cache BEGIN SELECT RAISE(ABORT, 'injected write failure'); END")
+            sqlx::query("CREATE TRIGGER reject_history_insert BEFORE INSERT ON history_collections BEGIN SELECT RAISE(ABORT, 'injected write failure'); END")
                 .execute(&admin).await.unwrap();
         } else {
-            sqlx::query("DROP TABLE history_cache")
+            sqlx::query("DROP TABLE history_collections")
                 .execute(&admin)
                 .await
                 .unwrap();

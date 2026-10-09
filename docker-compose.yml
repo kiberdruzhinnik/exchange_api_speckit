@@ -9,6 +9,8 @@ services:
     environment:
       EXCHANGE_API_LISTEN_ADDR: "0.0.0.0:8080"
       EXCHANGE_API_HISTORY_CACHE_DB_PATH: "/var/lib/exchange-api/history.sqlite3"
+      EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS: "604800"
+      EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS: "900"
     volumes:
       - exchange-api-history:/var/lib/exchange-api
     restart: unless-stopped

@@ -3,6 +3,7 @@ pub mod cache_store;
 pub mod cbr;
 pub mod config;
 pub mod domain;
+pub mod history_refresh;
 pub mod http;
 pub mod moex;
 pub mod provider;

@@ -132,7 +132,6 @@ def main():
     parser.add_argument("--symbols", default="SBER,GAZP,VTBR,ROSN")
     parser.add_argument("--profile", choices=("all", "history", "quote", "combined", "lifecycle"), default="all")
     parser.add_argument("--server-log")
-    parser.add_argument("--history-cache-ttl-seconds", type=int, default=300)
     args = parser.parse_args()
     endpoint = urllib.parse.urlsplit(args.base_url)
     if endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}:

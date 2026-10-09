@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DailyMarketRecord {
     #[serde(serialize_with = "serialize_utc_z")]
     pub date: DateTime<Utc>,
@@ -12,7 +12,7 @@ pub struct DailyMarketRecord {
     pub facevalue: Option<f64>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LatestQuoteRecord {
     #[serde(serialize_with = "serialize_optional_utc_z")]
     pub date: Option<DateTime<Utc>>,

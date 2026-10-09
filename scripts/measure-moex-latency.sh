@@ -16,8 +16,6 @@ for ((index = 0; index < ${#benchmark_args[@]}; index++)); do
     --symbols=*) benchmark_symbols="${benchmark_args[index]#*=}" ;;
   esac
 done
-benchmark_ttl=300
-if [[ "$benchmark_profile" == "lifecycle" ]]; then benchmark_ttl=60; fi
 cleanup() {
   if [[ -n "$server_pid" ]]; then
     kill "$server_pid" 2>/dev/null || true
@@ -30,7 +28,6 @@ trap cleanup EXIT
 cd "$repo_root"
 cargo build --release --locked
 EXCHANGE_API_LISTEN_ADDR="$listen_addr" \
-EXCHANGE_API_HISTORY_CACHE_TTL_SECS="$benchmark_ttl" \
 EXCHANGE_API_MOEX_ISS_BASE_URL="https://iss.moex.com/iss/" \
 EXCHANGE_API_HISTORY_CACHE_DB_PATH="$run_dir/history.sqlite3" \
 ./target/release/exchange-api >"$run_dir/server.log" 2>&1 &
@@ -53,4 +50,4 @@ if [[ "$benchmark_profile" != "lifecycle" ]]; then
   done
 fi
 
-python3 scripts/measure-moex-latency.py --server-log "$run_dir/server.log" --history-cache-ttl-seconds "$benchmark_ttl" "$@"
+python3 scripts/measure-moex-latency.py --server-log "$run_dir/server.log" "$@"

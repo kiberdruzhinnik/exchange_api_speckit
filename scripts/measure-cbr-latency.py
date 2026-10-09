@@ -46,7 +46,7 @@ def read_cache_events(log_path, offset):
         if 'phase="source_fetch"' in line:
             source_fetches.append(symbol.group(1))
         elif 'history request completed' in line:
-            cache = re.search(r'cache="(memory_hit|persistent_hit|miss)"', line)
+            cache = re.search(r'cache="([a-z_]+)"', line)
             if cache:
                 outcomes.append((symbol.group(1), cache.group(1)))
     return new_offset, source_fetches, outcomes
@@ -62,23 +62,15 @@ def issue_history_probe(args, symbol=None):
     return result, source_fetches, outcomes
 
 
-def verify_history_cache_lifecycle(args):
-    cold, cold_fetches, cold_outcomes = issue_history_probe(args)
-    warm, warm_fetches, warm_outcomes = issue_history_probe(args)
-    time.sleep(args.history_cache_ttl_seconds + 1)
-    expired, expiry_fetches, expiry_outcomes = issue_history_probe(args)
-    source_fetch_count = len(cold_fetches) + len(warm_fetches) + len(expiry_fetches)
-    warm_hit_count = sum(
-        outcome == "memory_hit"
-        for _, outcome in cold_outcomes + warm_outcomes + expiry_outcomes
-    )
-    statuses_ok = all(row[4] is not None and 200 <= row[4] < 300 for row in (cold, warm, expired))
-    verified = statuses_ok and len(cold_fetches) == 1 and not warm_fetches and len(expiry_fetches) == 1 and warm_hit_count >= 1
+def verify_incremental_history_lifecycle(args):
+    probes = [issue_history_probe(args) for _ in range(3)]
+    statuses_ok = all(row[0][4] is not None and 200 <= row[0][4] < 300 for row in probes)
+    source_fetches_ok = all(len(fetches) == 1 for _, fetches, _ in probes)
+    verified = statuses_ok and source_fetches_ok
     print(
-        f"history_cache_lifecycle cold_status={cold[4]} cold_source_fetches={len(cold_fetches)} "
-        f"warm_status={warm[4]} warm_memory_hits={warm_hit_count} "
-        f"expiry_status={expired[4]} expiry_source_fetches={len(expiry_fetches)} "
-        f"ttl_seconds={args.history_cache_ttl_seconds} verified={str(verified).lower()}",
+        f"history_incremental_lifecycle statuses={[row[0][4] for row in probes]} "
+        f"source_fetches={[len(fetches) for _, fetches, _ in probes]} "
+        f"refresh_outcomes={[outcomes for _, _, outcomes in probes]} verified={str(verified).lower()}",
         flush=True,
     )
     return verified
@@ -169,7 +161,7 @@ def run_stage(args, mode):
     if mode in ("history", "combined"):
         print(
             f"profile={mode} history_source_fetches={len(source_fetches)} "
-            f"history_warm_memory_hits={memory_hits} history_persistent_hits={persistent_hits} "
+            f"history_in_memory_hits={memory_hits} history_persistent_hits={persistent_hits} "
             f"history_warmup_statuses={','.join(str(status) for status in warmup_statuses)}",
             flush=True,
         )
@@ -193,7 +185,6 @@ def main():
     parser.add_argument("--duration-seconds", type=int, default=55)
     parser.add_argument("--symbols", default="USD")
     parser.add_argument("--server-log")
-    parser.add_argument("--history-cache-ttl-seconds", type=int, default=60)
     parser.add_argument(
         "--profile", choices=("all", "history", "quote", "combined"), default="all"
     )
@@ -202,15 +193,13 @@ def main():
     if endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}:
         parser.error("base URL must target the local HTTP service")
     args.symbols = [symbol.strip().upper() for symbol in args.symbols.split(",") if symbol.strip()]
-    if not args.symbols or args.duration_seconds <= 0 or args.history_cache_ttl_seconds <= 0:
-        parser.error("duration and history-cache TTL must be positive and at least one symbol is required")
-    if args.duration_seconds >= args.history_cache_ttl_seconds:
-        parser.error("each timed profile must be shorter than the history-cache TTL; cache expiry is verified separately")
+    if not args.symbols or args.duration_seconds <= 0:
+        parser.error("duration must be positive and at least one symbol is required")
     print("profile=10_clients target_total_rps=10 body_fully_read=true", flush=True)
     args.log_offset = 0
     if not args.server_log:
-        parser.error("--server-log is required to verify the history cache lifecycle")
-    lifecycle_verified = verify_history_cache_lifecycle(args)
+        parser.error("--server-log is required to verify the incremental history lifecycle")
+    lifecycle_verified = verify_incremental_history_lifecycle(args)
     modes = ("history", "quote", "combined") if args.profile == "all" else (args.profile,)
     profiles_passed = [run_stage(args, mode) for mode in modes]
     if not lifecycle_verified or not all(profiles_passed):

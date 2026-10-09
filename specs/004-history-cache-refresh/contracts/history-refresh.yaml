@@ -1,0 +1,41 @@
+contract: exchange-api-history-refresh
+version: 1
+scope:
+  routes:
+    - GET /v1/moex/{SYMBOL}
+    - GET /v1/spbex/{SYMBOL}
+    - GET /v1/cbr/{SYMBOL}
+  response_schema: unchanged-six-field-history-array
+configuration:
+  EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS:
+    type: positive-integer
+    unit: seconds
+    default: 604800
+    description: Positive interval used to schedule full background refreshes of every provider/symbol with retained history; any positive value is honored and the default is seven days.
+  EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS:
+    type: positive-integer
+    unit: seconds
+    default: 900
+    description: Maximum delay between exponential retries for retryable background full-refresh failures; the initial delay is one second.
+behavior:
+  history_retention: indefinite-until-operator-deletion
+  user_request_refresh: fetch-records-after-latest-retained-date
+  scheduled_refresh: full-history-refresh-for-all-retained-provider-symbol-pairs
+  scheduled_refresh_requires_user_request: false
+  source_success: merge-by-provider-symbol-date-and-return-complete-retained-history
+  user_request_source_failure: existing-provider-specific-http-502
+  background_source_failure: preserve-last-successfully-stored-history
+  background_retry: exponential-until-valid-refresh-with-configured-maximum-delay
+  background_retryable_errors: [transport-failure, timeout, HTTP-408, HTTP-425, HTTP-429, HTTP-5xx, invalid-or-incomplete-data]
+  other_http_4xx: defer-one-configured-interval-after-failed-attempt
+  background_retry_state: persist-failure-count-and-next-attempt-time-reset-on-success
+  full_refresh_validation: validate-all-pages-and-record-identities-before-atomic-merge
+  duplicate_record_identity: reject-full-refresh-even-if-duplicate-values-match
+  refresh_due_time: pending-next-attempt-time-overrides-regular-interval
+  invalid_or_incomplete_full_refresh: preserve-history-and-last-successful-refresh-metadata
+  history_store_failure: existing-history-store-http-503
+  quote_routes: unchanged-and-uncached
+compatibility:
+  response_fields: [date, close, high, low, volume, facevalue]
+  history_cache_ttl_secs: removed-startup-fails-if-set-with-migration-message
+  history_cache_max_bytes: transient-memory-budget-only-does-not-cap-or-evict-durable-history

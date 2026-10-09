@@ -7,7 +7,8 @@ pub struct AppConfig {
     pub moex_iss_base_url: String,
     pub spbex_api_base_url: String,
     pub cbr_api_base_url: String,
-    pub history_cache_ttl: Duration,
+    pub history_full_refresh_interval: Duration,
+    pub history_refresh_retry_max_backoff: Duration,
     pub history_cache_max_bytes: u64,
     pub moex_max_response_bytes: usize,
     pub moex_max_history_bytes: usize,
@@ -86,16 +87,26 @@ impl AppConfig {
             );
         }
 
-        let cache_ttl_seconds = get("EXCHANGE_API_HISTORY_CACHE_TTL_SECS")
-            .and_then(|value| value.into_string().ok())
-            .ok_or(std::env::VarError::NotPresent)
-            .unwrap_or_else(|_| "60".to_owned())
-            .parse::<u64>()
-            .map_err(|error| {
-                format!("EXCHANGE_API_HISTORY_CACHE_TTL_SECS must be a positive integer: {error}")
-            })?;
-        if cache_ttl_seconds == 0 {
-            return Err("EXCHANGE_API_HISTORY_CACHE_TTL_SECS must be greater than zero".to_owned());
+        if get("EXCHANGE_API_HISTORY_CACHE_TTL_SECS").is_some() {
+            return Err("EXCHANGE_API_HISTORY_CACHE_TTL_SECS has been removed; unset it because history is retained indefinitely".to_owned());
+        }
+        let history_full_refresh_interval = get("EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS")
+            .and_then(|v| v.into_string().ok()).unwrap_or_else(|| "604800".to_owned())
+            .parse::<u64>().map_err(|e| format!("EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS must be a positive integer: {e}"))?;
+        if history_full_refresh_interval == 0 {
+            return Err(
+                "EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS must be greater than zero"
+                    .to_owned(),
+            );
+        }
+        let history_refresh_retry_max_backoff = get("EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS")
+            .and_then(|v| v.into_string().ok()).unwrap_or_else(|| "900".to_owned())
+            .parse::<u64>().map_err(|e| format!("EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS must be a positive integer: {e}"))?;
+        if history_refresh_retry_max_backoff == 0 {
+            return Err(
+                "EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS must be greater than zero"
+                    .to_owned(),
+            );
         }
 
         let history_cache_max_bytes = get("EXCHANGE_API_HISTORY_CACHE_MAX_BYTES")
@@ -150,7 +161,10 @@ impl AppConfig {
             moex_iss_base_url,
             spbex_api_base_url,
             cbr_api_base_url,
-            history_cache_ttl: Duration::from_secs(cache_ttl_seconds),
+            history_full_refresh_interval: Duration::from_secs(history_full_refresh_interval),
+            history_refresh_retry_max_backoff: Duration::from_secs(
+                history_refresh_retry_max_backoff,
+            ),
             history_cache_max_bytes,
             moex_max_response_bytes,
             moex_max_history_bytes,
@@ -171,7 +185,14 @@ mod tests {
         let config = AppConfig::from_lookup(|_| None).unwrap();
         assert_eq!(config.listen_addr.to_string(), "0.0.0.0:8080");
         assert_eq!(config.upstream_timeout, Duration::from_secs(15));
-        assert_eq!(config.history_cache_ttl, Duration::from_secs(60));
+        assert_eq!(
+            config.history_full_refresh_interval,
+            Duration::from_secs(604800)
+        );
+        assert_eq!(
+            config.history_refresh_retry_max_backoff,
+            Duration::from_secs(900)
+        );
         assert_eq!(config.history_cache_max_bytes, 64 * 1024 * 1024);
         assert_eq!(
             config.history_cache_db_path,
@@ -187,7 +208,8 @@ mod tests {
         let values = HashMap::from([
             ("EXCHANGE_API_LISTEN_ADDR", "127.0.0.1:9090"),
             ("EXCHANGE_API_REQUEST_TIMEOUT_SECS", "7"),
-            ("EXCHANGE_API_HISTORY_CACHE_TTL_SECS", "9"),
+            ("EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS", "9"),
+            ("EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS", "17"),
             ("EXCHANGE_API_HISTORY_CACHE_MAX_BYTES", "1234"),
             ("EXCHANGE_API_HISTORY_CACHE_DB_PATH", "/tmp/cache.sqlite"),
             ("EXCHANGE_API_MOEX_ISS_BASE_URL", "https://iss.example/"),
@@ -216,7 +238,11 @@ mod tests {
         let config = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap();
         assert_eq!(config.listen_addr.to_string(), "127.0.0.1:9090");
         assert_eq!(config.upstream_timeout, Duration::from_secs(7));
-        assert_eq!(config.history_cache_ttl, Duration::from_secs(9));
+        assert_eq!(config.history_full_refresh_interval, Duration::from_secs(9));
+        assert_eq!(
+            config.history_refresh_retry_max_backoff,
+            Duration::from_secs(17)
+        );
         assert_eq!(config.history_cache_max_bytes, 1234);
         assert_eq!(
             config.history_cache_db_path,
@@ -229,5 +255,34 @@ mod tests {
         assert_eq!(config.moex_max_history_bytes, 4096);
         assert_eq!(config.spbex_max_response_bytes, 8192);
         assert_eq!(config.cbr_max_response_bytes, 16384);
+    }
+
+    #[test]
+    fn accepts_long_refresh_intervals_and_rejects_removed_ttl() {
+        let values =
+            HashMap::from([("EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS", "1209600")]);
+        let config = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap();
+        assert_eq!(
+            config.history_full_refresh_interval,
+            Duration::from_secs(1209600)
+        );
+
+        let values = HashMap::from([("EXCHANGE_API_HISTORY_CACHE_TTL_SECS", "60")]);
+        let error = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap_err();
+        assert!(error.contains("has been removed"));
+    }
+
+    #[test]
+    fn rejects_zero_refresh_interval_and_retry_cap() {
+        for (key, value) in [
+            ("EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS", "0"),
+            ("EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS", "0"),
+        ] {
+            let values = HashMap::from([(key, value)]);
+            assert!(
+                AppConfig::from_lookup(|candidate| values.get(candidate).map(OsString::from))
+                    .is_err()
+            );
+        }
     }
 }

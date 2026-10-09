@@ -36,6 +36,47 @@ async fn rejects_unsupported_symbol_using_current_directory() {
 }
 
 #[tokio::test]
+async fn requests_history_after_latest_record_date() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(DIRECTORY))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/cbr/currencies.xml")),
+        )
+        .mount(&server)
+        .await;
+    daily_directory_mock().mount(&server).await;
+    Mock::given(method("GET"))
+        .and(path(HISTORY))
+        .and(wiremock::matchers::query_param("date_req1", "03/01/2024"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/cbr/history.xml")),
+        )
+        .mount(&server)
+        .await;
+    let after = chrono::DateTime::parse_from_rfc3339("2024-01-02T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    client(&server, 4096)
+        .history_since("USD", Some(after))
+        .await
+        .unwrap();
+    let request = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.url.path() == HISTORY)
+        .unwrap();
+    assert!(
+        request
+            .url
+            .query_pairs()
+            .any(|(key, value)| key == "date_req1" && value == "03/01/2024")
+    );
+}
+
+#[tokio::test]
 async fn rejects_upstream_status_and_malformed_xml() {
     let status_server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -53,7 +94,7 @@ async fn rejects_upstream_status_and_malformed_xml() {
         .await;
     assert!(matches!(
         client(&status_server, 4096).history("USD").await,
-        Err(CbrError::Upstream(_))
+        Err(CbrError::HttpStatus(503))
     ));
 
     let malformed_server = MockServer::start().await;
@@ -74,7 +115,7 @@ async fn rejects_upstream_status_and_malformed_xml() {
         .await;
     assert!(matches!(
         client(&malformed_server, 4096).history("USD").await,
-        Err(CbrError::Upstream(_))
+        Err(CbrError::InvalidData(_))
     ));
 }
 

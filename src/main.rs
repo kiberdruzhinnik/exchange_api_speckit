@@ -31,31 +31,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.history_cache_max_bytes,
     )
     .await?;
-    let app = router(AppState::with_all_services_and_store(
+    let state = AppState::with_all_services_and_store(
         moex,
         spbex,
         cbr,
-        config.history_cache_ttl,
+        Duration::from_secs(60),
         config.history_cache_max_bytes,
         store,
-    ));
+    );
+    let app = router(state.clone());
     let listener = TcpListener::bind(config.listen_addr).await?;
 
     tracing::info!(address = %config.listen_addr, "starting exchange API");
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let server = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
+            let mut shutdown_rx = shutdown_rx;
+            let _ = shutdown_rx.changed().await;
         })
         .into_future();
+    let refresh_task = tokio::spawn(exchange_api::history_refresh::run(
+        state
+            .cache_store
+            .clone()
+            .expect("persistent store configured"),
+        state.providers.clone(),
+        config.history_full_refresh_interval,
+        config.history_refresh_retry_max_backoff,
+        shutdown_tx.subscribe(),
+    ));
+    let signal_tx = shutdown_tx.clone();
     let signal = async move {
         tokio::signal::ctrl_c().await?;
         tracing::info!("received Ctrl+C (SIGINT)");
-        let _ = shutdown_tx.send(());
+        let _ = signal_tx.send(true);
         Ok::<(), std::io::Error>(())
     };
 
     run_until_shutdown(server, signal, Duration::from_secs(30)).await?;
+    let _ = shutdown_tx.send(true);
+    exchange_api::shutdown::cancel_and_join(refresh_task).await;
     Ok(())
 }
 

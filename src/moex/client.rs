@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use reqwest::{Client, Url};
 use serde_json::Value;
 use std::time::Duration;
@@ -61,13 +62,10 @@ impl MoexClient {
     }
 
     async fn get_json(&self, path: &str, query: &[(&str, String)]) -> anyhow::Result<Value> {
-        let response = self
-            .client
-            .get(self.url(path)?)
-            .query(query)
-            .send()
-            .await?
-            .error_for_status()?;
+        let response = self.client.get(self.url(path)?).query(query).send().await?;
+        if !response.status().is_success() {
+            anyhow::bail!("HTTP {}", response.status().as_u16());
+        }
         self.decode_json(response).await
     }
     pub async fn security(&self, symbol: &str) -> anyhow::Result<Option<Value>> {
@@ -80,7 +78,10 @@ impl MoexClient {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        Ok(Some(self.decode_json(response.error_for_status()?).await?))
+        if !response.status().is_success() {
+            anyhow::bail!("HTTP {}", response.status().as_u16());
+        }
+        Ok(Some(self.decode_json(response).await?))
     }
 
     pub async fn board_security(&self, symbol: &str, board: &str) -> anyhow::Result<Value> {
@@ -106,25 +107,50 @@ impl MoexClient {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             anyhow::bail!("invalid symbol: unknown MOEX symbol");
         }
-        self.decode_json(response.error_for_status()?).await
+        if !response.status().is_success() {
+            anyhow::bail!("HTTP {}", response.status().as_u16());
+        }
+        self.decode_json(response).await
     }
 
-    async fn history_page(&self, symbol: &str, offset: usize) -> anyhow::Result<Value> {
+    async fn history_page(
+        &self,
+        symbol: &str,
+        offset: usize,
+        after: Option<NaiveDate>,
+    ) -> anyhow::Result<Value> {
+        let mut query = vec![
+            ("iss.only", "history,history.cursor".into()),
+            ("iss.meta", "off".into()),
+            ("start", offset.to_string()),
+            ("limit", "100".into()),
+        ];
+        if let Some(after) = after {
+            query.push((
+                "from",
+                (after + chrono::Days::new(1))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+            ));
+        }
         self.get_json(
             &format!("history/engines/stock/markets/shares/securities/{symbol}.json"),
-            &[
-                ("iss.only", "history,history.cursor".into()),
-                ("iss.meta", "off".into()),
-                ("start", offset.to_string()),
-                ("limit", "100".into()),
-            ],
+            &query,
         )
         .await
     }
 
     pub async fn history(&self, symbol: &str) -> anyhow::Result<Value> {
+        self.history_since(symbol, None).await
+    }
+
+    pub async fn history_since(
+        &self,
+        symbol: &str,
+        after: Option<NaiveDate>,
+    ) -> anyhow::Result<Value> {
         const MAX_PARALLEL_HISTORY_PAGES: usize = 128;
-        let first_page = self.history_page(symbol, 0).await?;
+        let first_page = self.history_page(symbol, 0, after).await?;
         let history = &first_page["history"];
         let columns = history["columns"]
             .as_array()
@@ -161,6 +187,10 @@ impl MoexClient {
             as usize;
 
         let mut rows = first_rows;
+        anyhow::ensure!(
+            rows.len() == total.min(page_size),
+            "MOEX first page row count does not match cursor"
+        );
         let mut history_bytes =
             serde_json::to_vec(&columns)?.len() + serde_json::to_vec(&rows)?.len();
         anyhow::ensure!(
@@ -176,7 +206,7 @@ impl MoexClient {
                 let client = self.clone();
                 let symbol = symbol.to_owned();
                 pages.spawn(async move {
-                    let value = client.history_page(&symbol, offset).await?;
+                    let value = client.history_page(&symbol, offset, after).await?;
                     Ok::<_, anyhow::Error>((offset, value))
                 });
             }
@@ -196,6 +226,10 @@ impl MoexClient {
                 .as_array()
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("MOEX history page has no data"))?;
+            anyhow::ensure!(
+                page_rows.len() == (total - offset).min(page_size),
+                "MOEX page row count does not match cursor"
+            );
             let page_bytes = serde_json::to_vec(&page_rows)?.len();
             anyhow::ensure!(
                 page_bytes <= self.max_history_bytes.saturating_sub(history_bytes),

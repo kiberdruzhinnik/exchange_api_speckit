@@ -2,7 +2,19 @@ openapi: 3.1.0
 info:
   title: Exchange API
   version: 1.0.0
-  description: Canonical REST contract for MOEX, SPBEX, and Bank of Russia currency rates.
+  description: |-
+    Canonical REST contract for MOEX, SPBEX, and Bank of Russia currency rates.
+    History is retained indefinitely in the persistent store. Each history request fetches
+    records newer than the latest retained record and returns the complete merged history.
+    The service also full-refreshes every retained provider/symbol collection in the
+    background. The cadence is controlled by EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS
+    (positive seconds; default 604800). Retryable background failures include transport
+    errors, HTTP 408, 425, 429, 5xx, and invalid or incomplete data; retries use capped
+    exponential backoff configured by EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS
+    (positive seconds; default 900). Invalid full responses preserve last-good history.
+    EXCHANGE_API_HISTORY_CACHE_TTL_SECS is removed and causes startup failure if set.
+    EXCHANGE_API_HISTORY_CACHE_MAX_BYTES applies only to transient in-memory entries and
+    does not cap or evict durable history.
 servers:
   - url: /
 paths:
@@ -10,7 +22,7 @@ paths:
     get:
       operationId: getMoexTickerHistory
       summary: Get daily history for a MOEX ticker
-      description: Returns daily records from MOEX in ascending date order. `facevalue` is the board-specific current LOTSIZE selected for each trading date.
+      description: Returns the complete retained daily history in ascending date order, fetching only dates newer than the latest retained date. A background worker also full-refreshes retained symbols. `facevalue` is the board-specific current LOTSIZE selected for each trading date.
       parameters:
         - $ref: '#/components/parameters/MoexSymbol'
       responses:
@@ -68,7 +80,7 @@ paths:
     get:
       operationId: getSpbexTickerHistory
       summary: Get daily history for an SPBEX ticker
-      description: Returns daily candles dated before the current UTC calendar date in ascending order. `volume` is null because the chart feed has no volume field; `facevalue` is 1.
+      description: Returns the complete retained daily history dated before the current UTC calendar date in ascending order, fetching only dates newer than the latest retained date. `volume` is null because the chart feed has no volume field; `facevalue` is 1.
       parameters:
         - $ref: '#/components/parameters/SpbexSymbol'
       responses:
@@ -126,7 +138,7 @@ paths:
     get:
       operationId: getCbrCurrencyHistory
       summary: Get daily history for a Bank of Russia currency
-      description: Returns all available official rates ordered oldest to newest. `close` is RUB per one currency unit (`Value / Nominal`); `facevalue` is the source nominal. CBR does not publish high, low, or volume, so those values are null.
+      description: Returns all retained official rates ordered oldest to newest, fetching dates newer than the latest retained date. `close` is RUB per one currency unit (`Value / Nominal`); `facevalue` is the source nominal. CBR does not publish high, low, or volume, so those values are null.
       parameters:
         - $ref: '#/components/parameters/CbrSymbol'
       responses:

@@ -1,0 +1,177 @@
+openapi: 3.1.0
+info:
+  title: CBR Currency Rates API
+  version: 1.0.0
+  description: Returns official Bank of Russia daily currency-rate history and the latest available official rate. Rates are normalized to Russian rubles per one currency unit. History survives application restarts for its freshness period; quote requests fetch current source data every time. Under normal operating conditions (10 concurrent clients issuing 10 requests per second total), at least 95% of successful responses from each route must complete in under one second end to end; this is a hard acceptance gate.
+  license:
+    name: UNLICENSED
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /
+paths:
+  /v1/cbr/{SYMBOL}:
+    get:
+      operationId: getCbrCurrencyHistory
+      summary: Get daily history for a Bank of Russia currency
+      description: Returns all available official rates ordered oldest to newest. `close` is RUB per one currency unit; `facevalue` carries CBR nominal when supplied. CBR does not publish high, low, or volume, so those values are null.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: Ordered daily rate records, or an empty array when a successful source response contains no history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyCurrencyRate'
+              example:
+                - date: '2013-03-25T00:00:00Z'
+                  close: 0.05
+                  high: null
+                  low: null
+                  volume: null
+                  facevalue: 100
+        '400':
+          description: The symbol is malformed or not currently supported by the Bank of Russia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: The Bank of Russia is unavailable or returned malformed, oversized, or unusable data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The history response could not be read from or saved to the persistent history store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/cbr/{SYMBOL}/quote:
+    get:
+      operationId: getCbrCurrencyQuote
+      summary: Get the latest available Bank of Russia currency rate
+      description: Fetches the latest official rate on every request. If no rate is published for the current date, the latest available rate and its actual effective date are returned. A successful response without a rate for the supported symbol returns one all-null record.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: Exactly one latest-rate record, or one all-null record if the successful source response has no rate for the supported currency.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestCurrencyQuote'
+              example:
+                - date: '2026-10-09T00:00:00Z'
+                  close: 92.5
+                  high: null
+                  low: null
+                  volume: null
+                  facevalue: 1
+        '400':
+          description: The symbol is malformed or not currently supported by the Bank of Russia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: The Bank of Russia is unavailable or returned malformed, oversized, or unusable data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  parameters:
+    Symbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: Bank of Russia ISO currency character code. Surrounding whitespace is trimmed and letters are uppercased.
+      schema:
+        type: string
+        minLength: 1
+        pattern: '^[A-Za-z]{3}$'
+      examples:
+        usd:
+          value: USD
+        cny:
+          value: CNY
+        eur:
+          value: EUR
+  schemas:
+    DailyCurrencyRate:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: string
+          format: date-time
+          description: Official rate effective date represented at UTC midnight.
+          example: '2013-03-25T00:00:00Z'
+        close:
+          type: [number, 'null']
+          exclusiveMinimum: 0
+          description: Normalized official rate in RUB per one unit of the requested currency; null if required source values are absent.
+        high:
+          type: [number, 'null']
+          description: Null because CBR does not publish a daily high.
+        low:
+          type: [number, 'null']
+          description: Null because CBR does not publish a daily low.
+        volume:
+          type: [number, 'null']
+          description: Null because CBR does not publish traded volume.
+        facevalue:
+          type: [number, 'null']
+          description: Source nominal quantity when supplied; otherwise null.
+    LatestCurrencyQuote:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: [string, 'null']
+          format: date-time
+          description: Official effective date, or null when the successful source response has no rate.
+        close:
+          type: [number, 'null']
+          description: Normalized RUB per one currency unit, or null when no rate is available.
+        high:
+          type: [number, 'null']
+          description: Null because CBR does not publish a daily high.
+        low:
+          type: [number, 'null']
+          description: Null because CBR does not publish a daily low.
+        volume:
+          type: [number, 'null']
+          description: Null because CBR does not publish traded volume.
+        facevalue:
+          type: [number, 'null']
+          description: Source nominal quantity when supplied; otherwise null.
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [invalid_symbol, cbr_unavailable, history_store_unavailable]
+            message:
+              type: string
+              examples:
+                - Symbol is malformed or unsupported
+                - Bank of Russia currency data is temporarily unavailable
+                - Currency history is temporarily unavailable

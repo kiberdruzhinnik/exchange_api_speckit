@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<Valuta>
+  <Item ID="R01235">
+    <ISO_Char_Code>USD</ISO_Char_Code>
+  </Item>
+  <Item ID="R01375">
+    <ISO_Char_Code>CNY</ISO_Char_Code>
+  </Item>
+  <Item ID="R01239">
+    <ISO_Char_Code>EUR</ISO_Char_Code>
+  </Item>
+</Valuta>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<ValCurs ID="R01235" DateRange1="01.01.1990" DateRange2="27.03.2013">
+  <Record Date="26.03.2013" Id="R01235">
+    <Nominal>100</Nominal>
+    <Value>5000,0000</Value>
+  </Record>
+  <Record Date="25.03.2013" Id="R01235">
+    <Nominal>100</Nominal>
+    <Value>5,0000</Value>
+  </Record>
+  <Record Date="27.03.2013" Id="R01235">
+    <Nominal>100</Nominal>
+  </Record>
+</ValCurs>

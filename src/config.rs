@@ -6,11 +6,13 @@ pub struct AppConfig {
     pub upstream_timeout: Duration,
     pub moex_iss_base_url: String,
     pub spbex_api_base_url: String,
+    pub cbr_api_base_url: String,
     pub history_cache_ttl: Duration,
     pub history_cache_max_bytes: u64,
     pub moex_max_response_bytes: usize,
     pub moex_max_history_bytes: usize,
     pub spbex_max_response_bytes: usize,
+    pub cbr_max_response_bytes: usize,
     pub history_cache_db_path: PathBuf,
 }
 
@@ -36,6 +38,19 @@ impl AppConfig {
 
         let spbex_api_base_url = env::var("SPBEX_API_BASE_URL")
             .unwrap_or_else(|_| "https://spbexchange.ru/api/".to_owned());
+
+        let cbr_api_base_url =
+            env::var("CBR_API_BASE_URL").unwrap_or_else(|_| "https://www.cbr.ru/".to_owned());
+
+        let cbr_max_response_bytes = env::var("CBR_MAX_RESPONSE_BYTES")
+            .unwrap_or_else(|_| (16 * 1024 * 1024usize).to_string())
+            .parse::<usize>()
+            .map_err(|error| {
+                format!("CBR_MAX_RESPONSE_BYTES must be a positive integer: {error}")
+            })?;
+        if cbr_max_response_bytes == 0 {
+            return Err("CBR_MAX_RESPONSE_BYTES must be greater than zero".to_owned());
+        }
 
         let spbex_max_response_bytes = env::var("SPBEX_MAX_RESPONSE_BYTES")
             .unwrap_or_else(|_| (16 * 1024 * 1024usize).to_string())
@@ -96,11 +111,13 @@ impl AppConfig {
             upstream_timeout: Duration::from_secs(timeout_seconds),
             moex_iss_base_url,
             spbex_api_base_url,
+            cbr_api_base_url,
             history_cache_ttl: Duration::from_secs(cache_ttl_seconds),
             history_cache_max_bytes,
             moex_max_response_bytes,
             moex_max_history_bytes,
             spbex_max_response_bytes,
+            cbr_max_response_bytes,
             history_cache_db_path,
         })
     }

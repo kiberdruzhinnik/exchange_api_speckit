@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod cache_store;
+pub mod cbr;
 pub mod config;
 pub mod domain;
 pub mod http;
@@ -7,6 +8,7 @@ pub mod moex;
 pub mod shutdown;
 pub mod spbex;
 
+use cbr::client::CbrClient;
 use moex::client::MoexClient;
 use spbex::client::SpbexClient;
 
@@ -14,6 +16,7 @@ use spbex::client::SpbexClient;
 pub struct AppState {
     pub moex: MoexClient,
     pub spbex: SpbexClient,
+    pub cbr: CbrClient,
     pub history_cache: cache::HistoryCache,
     pub cache_store: Option<cache_store::CacheStore>,
 }
@@ -56,6 +59,12 @@ impl AppState {
         Self {
             moex,
             spbex,
+            cbr: CbrClient::new(
+                "https://www.cbr.ru/",
+                std::time::Duration::from_secs(15),
+                16 * 1024 * 1024,
+            )
+            .expect("valid CBR default client"),
             history_cache: cache::HistoryCache::new(ttl, max_bytes),
             cache_store: None,
         }
@@ -86,8 +95,47 @@ impl AppState {
         Self {
             moex,
             spbex,
+            cbr: CbrClient::new(
+                "https://www.cbr.ru/",
+                std::time::Duration::from_secs(15),
+                16 * 1024 * 1024,
+            )
+            .expect("valid CBR default client"),
             history_cache: cache::HistoryCache::with_store(ttl, max_bytes, store.clone()),
             cache_store: Some(store),
+        }
+    }
+
+    pub fn with_all_services_and_store(
+        moex: MoexClient,
+        spbex: SpbexClient,
+        cbr: CbrClient,
+        ttl: std::time::Duration,
+        max_bytes: u64,
+        store: cache_store::CacheStore,
+    ) -> Self {
+        Self {
+            moex,
+            spbex,
+            cbr,
+            history_cache: cache::HistoryCache::with_store(ttl, max_bytes, store.clone()),
+            cache_store: Some(store),
+        }
+    }
+
+    pub fn with_all_services(
+        moex: MoexClient,
+        spbex: SpbexClient,
+        cbr: CbrClient,
+        ttl: std::time::Duration,
+        max_bytes: u64,
+    ) -> Self {
+        Self {
+            moex,
+            spbex,
+            cbr,
+            history_cache: cache::HistoryCache::new(ttl, max_bytes),
+            cache_store: None,
         }
     }
 }

@@ -1,5 +1,10 @@
 use crate::{
     AppState,
+    cbr::{
+        client::{CbrClient, CbrError},
+        mapping::{map_history as map_cbr_history, map_latest as map_cbr_latest},
+        validation::normalize_symbol as normalize_cbr_symbol,
+    },
     http::errors::ApiError,
     moex::{
         board::{board_on_date, primary_board_by_date},
@@ -246,6 +251,106 @@ async fn spbex_quote(
     Ok(Json(vec![record]))
 }
 
+async fn cbr_history(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Response<Body>, ApiError> {
+    let started = Instant::now();
+    let Some(normalized) = normalize_cbr_symbol(&symbol) else {
+        tracing::info!(
+            symbol,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            cache = "bypass",
+            status = 400,
+            outcome = "invalid_symbol",
+            "CBR history request completed"
+        );
+        return Err(ApiError::InvalidSymbol);
+    };
+    let client = state.cbr.clone();
+    let request_symbol = normalized.clone();
+    let key = format!("CBR:{normalized}");
+    match state
+        .history_cache
+        .get_or_fetch(key, move || async move {
+            build_cbr_history_response(&client, &request_symbol)
+                .await
+                .map_err(|error| error.to_string())
+        })
+        .await
+    {
+        Ok((body, cache_outcome)) => {
+            tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = cache_outcome.as_str(), status = 200, outcome = "success", "CBR history request completed");
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .map_err(|error| ApiError::Cbr(anyhow::anyhow!(error)))
+        }
+        Err(error) => {
+            if error.starts_with("cache store:") {
+                tracing::error!(symbol = %normalized, error = %error, elapsed_ms = started.elapsed().as_millis() as u64, status = 503, "CBR history store failed");
+                Err(ApiError::Store(error))
+            } else if error.starts_with("invalid symbol:") {
+                tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, status = 400, outcome = "invalid_symbol", "CBR history request completed");
+                Err(ApiError::InvalidSymbol)
+            } else {
+                tracing::warn!(symbol = %normalized, error = %error, elapsed_ms = started.elapsed().as_millis() as u64, status = 502, "CBR history request failed");
+                Err(ApiError::Cbr(anyhow::anyhow!(error)))
+            }
+        }
+    }
+}
+
+async fn cbr_quote(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Vec<crate::domain::LatestTradeRecord>>, ApiError> {
+    let started = Instant::now();
+    let Some(normalized) = normalize_cbr_symbol(&symbol) else {
+        tracing::info!(
+            symbol,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            cache = "bypass",
+            status = 400,
+            outcome = "invalid_symbol",
+            "CBR quote request completed"
+        );
+        return Err(ApiError::InvalidSymbol);
+    };
+    let latest = match state.cbr.latest(&normalized).await {
+        Ok(latest) => latest,
+        Err(CbrError::InvalidSymbol) => {
+            tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 400, outcome = "invalid_symbol", "CBR quote request completed");
+            return Err(ApiError::InvalidSymbol);
+        }
+        Err(error) => {
+            tracing::warn!(symbol = %normalized, error = %error, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 502, "CBR quote request failed");
+            return Err(ApiError::Cbr(anyhow::anyhow!(error)));
+        }
+    };
+    let record = map_cbr_latest(latest).map_err(ApiError::Cbr)?;
+    tracing::info!(symbol = %normalized, elapsed_ms = started.elapsed().as_millis() as u64, cache = "bypass", status = 200, outcome = "success", "CBR quote request completed");
+    Ok(Json(vec![record]))
+}
+
+async fn build_cbr_history_response(
+    client: &CbrClient,
+    symbol: &str,
+) -> anyhow::Result<bytes::Bytes> {
+    tracing::info!(
+        symbol,
+        outcome = "source_fetch",
+        "CBR history source fetch started"
+    );
+    let history = client.history(symbol).await.map_err(|error| match error {
+        CbrError::InvalidSymbol => anyhow::anyhow!("invalid symbol: currency is not supported"),
+        other => anyhow::anyhow!("{other}"),
+    })?;
+    let records = map_cbr_history(&history)?;
+    Ok(bytes::Bytes::from(serde_json::to_vec(&records)?))
+}
+
 async fn build_spbex_history_response(
     client: &SpbexClient,
     symbol: &str,
@@ -329,6 +434,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/moex/{symbol}/quote", get(ticker_quote))
         .route("/v1/spbex/{symbol}", get(spbex_history))
         .route("/v1/spbex/{symbol}/quote", get(spbex_quote))
+        .route("/v1/cbr/{symbol}", get(cbr_history))
+        .route("/v1/cbr/{symbol}/quote", get(cbr_quote))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

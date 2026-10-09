@@ -10,6 +10,8 @@ pub enum ApiError {
     Upstream(#[source] anyhow::Error),
     #[error("SPBEX market data is temporarily unavailable")]
     Spbex(#[source] anyhow::Error),
+    #[error("Bank of Russia currency data is temporarily unavailable")]
+    Cbr(#[source] anyhow::Error),
     #[error("history store is temporarily unavailable")]
     Store(String),
 }
@@ -47,6 +49,14 @@ impl IntoResponse for ApiError {
                     StatusCode::BAD_GATEWAY,
                     "spbex_unavailable",
                     "SPBEX market data is temporarily unavailable".to_owned(),
+                )
+            }
+            Self::Cbr(error) => {
+                tracing::warn!(error = %error, "Bank of Russia currency request failed");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "cbr_unavailable",
+                    "Bank of Russia currency data is temporarily unavailable".to_owned(),
                 )
             }
             Self::Store(error) => {

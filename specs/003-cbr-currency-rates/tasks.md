@@ -168,3 +168,81 @@
 ## Phase 8: Convergence
 
 - [X] T034 Run the existing SIGINT shutdown acceptance with `cargo test --test shutdown` and record the actual result in `specs/003-cbr-currency-rates/quickstart.md`, confirming request acceptance stops, in-flight work drains, and remaining work is canceled by the 30-second deadline per T033, FR-019, and SC-008 (partial).
+
+---
+
+## Phase 9: User Story 3 - Unify provider contracts and shared configuration (Priority: P2)
+
+**Goal**: Make MOEX, SPBEX, and CBR use one provider-neutral history/quote interface, common response/error behavior, and the same application-wide configuration names while preserving each provider's quote semantics.
+
+**Independent Test**: Run provider contract and API tests for MOEX, SPBEX, and CBR. Confirm routes trim and uppercase symbols; return the same six-field array shape; use HTTP 400 `invalid_symbol`, HTTP 502 with the established provider code (`moex_unavailable`, `spbex_unavailable`, or `cbr_unavailable`), and HTTP 503 `history_store_unavailable`; return `[]` for valid empty history and one all-null record when a successful quote has no data. Confirm each adapter retains its provider-specific quote meaning and all shared settings use canonical `EXCHANGE_API_*` names without legacy aliases.
+
+### Tests for User Story 3
+
+- [X] T035 [P] [US3] Add provider-interface contract tests in `tests/provider_contract.rs` covering normalized history and quote return types, common invalid-symbol/upstream categories, each provider's existing upstream code, and retained MOEX trade, SPBEX candle, and CBR official-rate quote meanings.
+- [X] T036 [P] [US3] Add shared configuration tests in `src/config.rs` covering the five canonical `EXCHANGE_API_*` defaults and overrides, provider-specific URL/size settings, and rejection/absence of compatibility aliases for `LISTEN_ADDR` and old shared `MOEX_*` settings.
+- [X] T037 [P] [US3] Update API error tests in `tests/api_errors.rs`, `tests/api_cbr.rs`, and `tests/api_spbex.rs` to assert common HTTP status/envelope behavior, shared `invalid_symbol` and `history_store_unavailable` codes, and the existing provider-specific 502 codes (`moex_unavailable`, `spbex_unavailable`, `cbr_unavailable`).
+- [X] T038 [P] [US3] Extend `tests/api_contract_schema.rs` to resolve each feature contract's external path references and validate all six canonical routes, shared record schemas, nullable values, error envelope, and provider-specific upstream code examples.
+
+### Implementation for User Story 3
+
+- [X] T039 [US3] Rename `LatestTradeRecord` to `LatestQuoteRecord` in `src/domain.rs`, `src/moex/mapping.rs`, `src/spbex/mapping.rs`, `src/cbr/mapping.rs`, `src/http/routes.rs`, `tests/moex_mapping.rs`, `tests/spbex_mapping.rs`, `tests/cbr_mapping.rs`, `tests/api_quote.rs`, `tests/api_spbex.rs`, and `tests/api_cbr.rs` while keeping provider-specific quote mapping unchanged.
+- [X] T040 [US3] Define `ExchangeProvider`, `ProviderError`, and provider-neutral history/quote signatures in `src/provider.rs`; distinguish invalid-symbol and upstream failures, and leave persistent-store failures to shared route/cache orchestration.
+- [X] T041 [P] [US3] Implement the common provider interface for MOEX in `src/moex/provider.rs`, delegating source requests, board selection, and latest-trade mapping to existing MOEX modules.
+- [X] T042 [P] [US3] Implement the common provider interface for SPBEX in `src/spbex/provider.rs`, delegating chart requests and latest-daily-candle mapping to existing SPBEX modules.
+- [X] T043 [P] [US3] Implement the common provider interface for CBR in `src/cbr/provider.rs`, delegating supported-currency lookup, XML requests, and latest-official-rate mapping to existing CBR modules.
+- [X] T044 [US3] Store the three provider implementations through one shared provider abstraction in `src/lib.rs` and construct them from `AppConfig` in `src/main.rs` without changing provider-specific source settings.
+- [X] T045 [US3] Refactor `src/http/routes.rs` to use shared history and quote orchestration for all providers, trim and uppercase every path symbol before provider validation, and preserve provider-specific quote meanings and exchange-qualified history keys.
+- [X] T046 [US3] Unify HTTP status and error-envelope mapping in `src/http/errors.rs` while preserving `moex_unavailable`, `spbex_unavailable`, and `cbr_unavailable` for their existing `/v1` routes and sharing `invalid_symbol` and `history_store_unavailable` codes.
+- [X] T047 [US3] Read the shared listener, timeout, history-cache TTL, capacity, and database path from `EXCHANGE_API_LISTEN_ADDR`, `EXCHANGE_API_REQUEST_TIMEOUT_SECS`, `EXCHANGE_API_HISTORY_CACHE_TTL_SECS`, `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES`, and `EXCHANGE_API_HISTORY_CACHE_DB_PATH` in `src/config.rs`; remove legacy-name lookups and keep source URL/response-limit variables provider-prefixed.
+- [X] T048 [US3] Change process setup in `tests/shutdown.rs` and the root `docker-compose.yml` example to use the canonical listener and cache environment names.
+
+### Contract and documentation for User Story 3
+
+- [X] T049 [US3] Create `specs/contracts/openapi.yaml` as the canonical OpenAPI contract with all six provider routes, shared history/quote/error schemas, and provider-specific quote descriptions.
+- [X] T050 [US3] Update `specs/001-moex-ticker-update/contracts/openapi.yaml`, `specs/002-spbex-ticker-update/contracts/openapi.yaml`, and `specs/003-cbr-currency-rates/contracts/openapi.yaml` to reference canonical route/schema definitions and document the shared envelope/statuses with preserved provider-specific upstream codes.
+- [X] T051 [US3] Replace remaining legacy shared environment names and document the canonical names in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, `specs/003-cbr-currency-rates/quickstart.md`, `specs/001-moex-ticker-update/plan.md`, `specs/002-spbex-ticker-update/plan.md`, `specs/003-cbr-currency-rates/plan.md`, `specs/001-moex-ticker-update/research.md`, `specs/002-spbex-ticker-update/research.md`, `specs/003-cbr-currency-rates/research.md`, and `docker-compose.yml`; retain provider-prefixed source URL and response-limit names.
+- [X] T052 [US3] Align `specs/003-cbr-currency-rates/plan.md`, `specs/003-cbr-currency-rates/research.md`, and `specs/003-cbr-currency-rates/quickstart.md` with the planned common interface, neutral quote record, preserved provider error codes, canonical settings, and provider-specific quote meanings.
+
+### Cross-provider acceptance for User Story 3
+
+- [X] T053 [US3] Run fixture-backed and API contract suites for MOEX, SPBEX, and CBR, including symbol normalization, empty history, absent quote, upstream failure, and history-store failure cases; resolve regressions in the affected `src/` and `tests/` files.
+- [X] T054 [US3] Run `scripts/measure-moex-latency.sh`, `scripts/measure-spbex-latency.sh`, and `scripts/measure-cbr-latency.sh` against production sources using the local optimized binary, 10 concurrent clients, and 10 total requests per second; record per-route successful-response p95 and optimize/repeat until every route meets the one-second target in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, and `specs/003-cbr-currency-rates/quickstart.md`.
+- [X] T055 [US3] Build the final Linux amd64 image successfully using `Dockerfile`, then run Semgrep and Trivy against the final source and built deliverable; resolve every Semgrep finding and every fixable High/Critical Trivy finding and record results in `specs/003-cbr-currency-rates/quickstart.md`.
+- [X] T056 [US3] Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo test --test shutdown`, and the local scenarios in all three provider quickstarts; record any unavailable checks in the corresponding quickstarts.
+
+**Checkpoint**: The three adapters satisfy one public and internal contract, canonical shared configuration is used throughout, and cross-provider latency, build, shutdown, and scan gates pass.
+
+## Dependencies & Execution Order for Shared Provider Work
+
+- T035-T038 define the expected interface, error, configuration, and schema behavior. T039-T048 implement it; T041-T043 can proceed in parallel after T039 defines the neutral quote type and T040 defines the interface. T044 depends on all three adapters, and T045 depends on T044.
+- T049-T052 align published contracts and documentation after the shared response and configuration design is fixed.
+- T053-T056 depend on all implementation and documentation tasks. Production latency, amd64 build, Semgrep, and Trivy are final acceptance gates.
+
+### Parallel Opportunities
+
+- T035-T038 can proceed in parallel because they cover separate test files or configuration unit tests.
+- T041-T043 can proceed in parallel after T040 because each adapter has a separate provider module.
+- T049 and T051 can proceed in parallel after shared codes and setting names are fixed.
+
+### Parallel Execution Examples
+
+```text
+US1 history tests (already complete): tests/cbr_mapping.rs and tests/api_cbr.rs
+US2 quote tests (already complete): tests/cbr_mapping.rs and tests/api_cbr.rs
+US3 contract/config tests: T035 tests/provider_contract.rs; T036 src/config.rs; T037 API error tests; T038 tests/api_contract_schema.rs
+US3 provider adapters after T039-T040: T041 src/moex/provider.rs; T042 src/spbex/provider.rs; T043 src/cbr/provider.rs
+```
+
+## Incremental Strategy for Remaining Work
+
+1. Keep completed CBR history and quote behavior as the existing MVP baseline.
+2. Define the neutral record and provider interface, then adapt all three sources behind it.
+3. Centralize route, error, and configuration behavior and align the canonical contract and deployment documentation.
+4. Re-run cross-provider functional, latency, amd64 build, SIGINT, Semgrep, and Trivy acceptance before completion.
+
+**Remaining work**: T057 records the completed MOEX and SPBEX production history-cache lifecycle probes.
+
+## Phase 10: Convergence
+
+- [X] T057 Extend the MOEX and SPBEX production latency harnesses to report history cold-fetch, warm-cache-hit, and expiry-refresh lifecycle probes separately from fixed-arrival p95 profiles; record each state’s result with provider-specific and combined workload results in the corresponding quickstarts per plan Performance Goals (partial).

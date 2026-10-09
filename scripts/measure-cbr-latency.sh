@@ -16,10 +16,10 @@ trap cleanup EXIT
 
 cd "$repo_root"
 cargo build --release --locked
-LISTEN_ADDR="$listen_addr" \
+EXCHANGE_API_LISTEN_ADDR="$listen_addr" \
 CBR_API_BASE_URL="https://www.cbr.ru/" \
-MOEX_HISTORY_CACHE_TTL_SECS="60" \
-MOEX_HISTORY_CACHE_DB_PATH="$run_dir/history.sqlite3" \
+EXCHANGE_API_HISTORY_CACHE_TTL_SECS="60" \
+EXCHANGE_API_HISTORY_CACHE_DB_PATH="$run_dir/history.sqlite3" \
 ./target/release/exchange-api >"$run_dir/server.log" 2>&1 &
 server_pid=$!
 

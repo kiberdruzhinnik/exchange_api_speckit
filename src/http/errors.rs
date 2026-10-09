@@ -14,6 +14,18 @@ pub enum ApiError {
     Cbr(#[source] anyhow::Error),
     #[error("history store is temporarily unavailable")]
     Store(String),
+    #[error("provider is temporarily unavailable")]
+    Provider {
+        code: &'static str,
+        #[source]
+        error: anyhow::Error,
+    },
+}
+
+impl ApiError {
+    pub fn provider(code: &'static str, error: anyhow::Error) -> Self {
+        Self::Provider { code, error }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +69,14 @@ impl IntoResponse for ApiError {
                     StatusCode::BAD_GATEWAY,
                     "cbr_unavailable",
                     "Bank of Russia currency data is temporarily unavailable".to_owned(),
+                )
+            }
+            Self::Provider { code, error } => {
+                tracing::warn!(code, error = %error, "exchange provider request failed");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    code,
+                    "Market data is temporarily unavailable".to_owned(),
                 )
             }
             Self::Store(error) => {

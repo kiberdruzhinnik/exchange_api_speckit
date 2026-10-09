@@ -6,10 +6,10 @@ Create a local directory for the durable history cache and start the service:
 
 ```sh
 mkdir -p ./data
-MOEX_HISTORY_CACHE_DB_PATH=./data/history.sqlite3 cargo run
+EXCHANGE_API_HISTORY_CACHE_DB_PATH=./data/history.sqlite3 cargo run
 ```
 
-The service listens on `0.0.0.0:8080`. `MOEX_HISTORY_CACHE_DB_PATH` selects the history cache database path (container default `/var/lib/exchange-api/history.sqlite3`). `MOEX_REQUEST_TIMEOUT_SECS` sets the MOEX request timeout (default 15 seconds). `MOEX_HISTORY_CACHE_TTL_SECS` sets history freshness/cache TTL (default 60 seconds). `MOEX_HISTORY_CACHE_MAX_BYTES` sets the maximum cached response payload bytes (default 64 MiB). `MOEX_MAX_ISS_RESPONSE_BYTES` bounds each ISS response (default 4 MiB), and `MOEX_MAX_HISTORY_BYTES` bounds accumulated history (default 64 MiB). `MOEX_ISS_BASE_URL` can point to a compatible ISS endpoint in fixture-backed tests.
+`EXCHANGE_API_LISTEN_ADDR` selects the shared listen address (default `0.0.0.0:8080`). `EXCHANGE_API_HISTORY_CACHE_DB_PATH` selects the history cache database path (container default `/var/lib/exchange-api/history.sqlite3`). `EXCHANGE_API_REQUEST_TIMEOUT_SECS` sets the shared upstream request timeout (default 15 seconds). `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` sets history freshness/cache TTL (default 60 seconds). `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` sets the maximum shared cached response payload bytes (default 64 MiB). `MOEX_MAX_ISS_RESPONSE_BYTES` bounds each ISS response (default 4 MiB), and `MOEX_MAX_HISTORY_BYTES` bounds accumulated history (default 64 MiB). `MOEX_ISS_BASE_URL` can point to a compatible ISS endpoint in fixture-backed tests. These shared `EXCHANGE_API_*` settings apply to every provider.
 
 Request daily history:
 
@@ -79,7 +79,7 @@ mkdir -p ./exchange-api-data
 sudo chown 65532:65532 ./exchange-api-data
 docker run --rm --platform linux/amd64 -p 8080:8080 \
   -v "$PWD/exchange-api-data:/var/lib/exchange-api" \
-  -e MOEX_HISTORY_CACHE_DB_PATH=/var/lib/exchange-api/history.sqlite3 \
+  -e EXCHANGE_API_HISTORY_CACHE_DB_PATH=/var/lib/exchange-api/history.sqlite3 \
   exchange-api:amd64
 ```
 
@@ -94,3 +94,13 @@ docker buildx build --platform linux/amd64,linux/arm64 --push -t registry.exampl
 ```
 
 Verify that the build produces both image platforms. AMD64 validation is build-only; no AMD64 runtime or route check is required. The arm64 runtime smoke check may be run on a compatible host.
+
+## Final shared-provider latency acceptance
+
+On 2026-10-09, the final shared-handler binary was measured against production MOEX ISS using SBER and 10 concurrent clients at 10 total requests per second. Each timed profile scheduled and issued all 1,200 requests with zero skips and zero upstream errors. History-only p95 was 0.002227 s, quote-only p95 was 0.398614 s, and combined overall p95 was 0.290081 s (history 0.004045 s, quote 0.363149 s). The history run used a warmed cache and a 300-second benchmark TTL so expiry did not interrupt the timed profile; cold, warm, and expiry behavior is separately covered by the CBR lifecycle probe and provider persistence tests. An initial profile that crossed the 60-second expiry was invalid and excluded.
+
+Final shared-provider quality gates on 2026-10-09 passed: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (81 tests), `cargo test --test shutdown` (3 tests), and the Linux amd64 Docker image build. Semgrep reported zero findings and Trivy reported zero fixable High/Critical image vulnerabilities; detailed final scan results are recorded in the CBR quickstart.
+
+## Production history cache lifecycle
+
+The separate `scripts/measure-moex-latency.sh --profile lifecycle --symbols SBER` probe uses a fresh temporary store and measures cold fetch, warm memory hit, and expiry-triggered source refresh without mixing those requests into a fixed-arrival profile. On 2026-10-09, the successful run with `EXCHANGE_API_REQUEST_TIMEOUT_SECS=30` returned cold 200 in 3.510839 s (`miss`, one source fetch), warm 200 in 0.000482 s (`memory_hit`, no fetch), and expiry 200 in 1.511765 s (`miss`, one refresh). An earlier default-timeout attempt returned the documented HTTP 502 after 15.366045 s on the expiry fetch; retrying with a 30-second timeout completed successfully. Use the default 15-second timeout for fixed-arrival p95 profiles.

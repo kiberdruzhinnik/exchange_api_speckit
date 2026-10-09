@@ -51,6 +51,12 @@ async fn rejects_malformed_symbols() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["error"]["code"], "invalid_symbol");
+    assert!(json["error"]["message"].is_string());
 }
 
 #[tokio::test]
@@ -190,4 +196,63 @@ async fn maps_unknown_symbol_to_bad_request() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn shared_routes_preserve_each_providers_upstream_error_code() {
+    use exchange_api::{cbr::client::CbrClient, spbex::client::SpbexClient};
+    use wiremock::matchers::any;
+
+    let moex_server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&moex_server)
+        .await;
+    let spbex_server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&spbex_server)
+        .await;
+    let cbr_server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&cbr_server)
+        .await;
+    let state = AppState::with_all_services(
+        MoexClient::new(&format!("{}/", moex_server.uri()), Duration::from_secs(1)).unwrap(),
+        SpbexClient::new(
+            &format!("{}/", spbex_server.uri()),
+            Duration::from_secs(1),
+            4096,
+        )
+        .unwrap(),
+        CbrClient::new(
+            &format!("{}/", cbr_server.uri()),
+            Duration::from_secs(1),
+            4096,
+        )
+        .unwrap(),
+        Duration::from_secs(60),
+        1024 * 1024,
+    );
+    for (path, expected_code) in [
+        ("/v1/moex/SBER", "moex_unavailable"),
+        ("/v1/spbex/SBER", "spbex_unavailable"),
+        ("/v1/cbr/USD", "cbr_unavailable"),
+    ] {
+        let response = router(state.clone())
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json["error"]["code"], expected_code,
+            "wrong code for {path}"
+        );
+        assert!(json["error"]["message"].is_string());
+    }
 }

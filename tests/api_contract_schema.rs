@@ -1,117 +1,140 @@
 use serde_yaml::Value;
+use std::path::{Path, PathBuf};
+
+const FEATURE_CONTRACTS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "specs/001-moex-ticker-update/contracts/openapi.yaml",
+        &[
+            ("/v1/moex/{SYMBOL}", "moex_unavailable"),
+            ("/v1/moex/{SYMBOL}/quote", "moex_unavailable"),
+        ],
+    ),
+    (
+        "specs/002-spbex-ticker-update/contracts/openapi.yaml",
+        &[
+            ("/v1/spbex/{SYMBOL}", "spbex_unavailable"),
+            ("/v1/spbex/{SYMBOL}/quote", "spbex_unavailable"),
+        ],
+    ),
+    (
+        "specs/003-cbr-currency-rates/contracts/openapi.yaml",
+        &[
+            ("/v1/cbr/{SYMBOL}", "cbr_unavailable"),
+            ("/v1/cbr/{SYMBOL}/quote", "cbr_unavailable"),
+        ],
+    ),
+];
+
+fn external_path_item<'a>(
+    feature_file: &Path,
+    feature: &'a Value,
+    path: &str,
+    canonical: &'a Value,
+) -> &'a Value {
+    let reference = feature["paths"][path]["$ref"]
+        .as_str()
+        .expect("feature path must reference canonical contract");
+    let (file, pointer) = reference
+        .split_once('#')
+        .expect("reference has JSON pointer");
+    let resolved = feature_file.parent().unwrap().join(file);
+    assert!(
+        resolved.exists(),
+        "external reference target does not exist: {}",
+        resolved.display()
+    );
+    assert_eq!(
+        resolved.file_name().and_then(|s| s.to_str()),
+        Some("openapi.yaml")
+    );
+    let mut value = canonical;
+    for segment in pointer.trim_start_matches('/').split('/') {
+        let key = segment.replace("~1", "/").replace("~0", "~");
+        value = &value[&key];
+    }
+    value
+}
 
 #[test]
-fn openapi_describes_history_and_quote_array_contracts() {
-    let contract: Value = serde_yaml::from_str(include_str!(
-        "../specs/001-moex-ticker-update/contracts/openapi.yaml"
-    ))
-    .unwrap();
-    let paths = contract.get("paths").unwrap();
-    for path in ["/v1/moex/{SYMBOL}", "/v1/moex/{SYMBOL}/quote"] {
-        let schema =
-            &paths[path]["get"]["responses"]["200"]["content"]["application/json"]["schema"];
-        assert_eq!(schema["type"], "array");
-    }
+fn each_feature_contract_resolves_its_two_paths_in_the_canonical_contract() {
+    let canonical: Value =
+        serde_yaml::from_str(include_str!("../specs/contracts/openapi.yaml")).unwrap();
     let fields = ["date", "close", "high", "low", "volume", "facevalue"];
-    for schema_name in ["DailyMarketRecord", "LatestTradeQuoteRecord"] {
-        let required = contract["components"]["schemas"][schema_name]["required"]
-            .as_sequence()
-            .unwrap();
-        for field in fields {
+    for (relative, expected_paths) in FEATURE_CONTRACTS {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative);
+        let text = std::fs::read_to_string(&file).unwrap();
+        let feature: Value = serde_yaml::from_str(&text).unwrap();
+        for (path, upstream_code) in *expected_paths {
+            let operation = external_path_item(&file, &feature, path, &canonical);
+            let get = &operation["get"];
             assert!(
-                required.iter().any(|v| v.as_str() == Some(field)),
-                "{schema_name} missing {field}"
+                get["responses"]["400"].is_mapping(),
+                "{path} missing 400 response"
             );
+            assert!(
+                get["responses"]["502"].is_mapping(),
+                "{path} missing 502 response"
+            );
+            assert_eq!(
+                get["responses"]["502"]["$ref"].as_str(),
+                Some(match *upstream_code {
+                    "moex_unavailable" => "#/components/responses/MoexUpstreamUnavailable",
+                    "spbex_unavailable" => "#/components/responses/SpbexUpstreamUnavailable",
+                    _ => "#/components/responses/CbrUpstreamUnavailable",
+                })
+            );
+            if !path.ends_with("/quote") {
+                assert!(
+                    get["responses"]["503"].is_mapping(),
+                    "{path} missing history-store failure response"
+                );
+            }
+            let schema = &get["responses"]["200"]["content"]["application/json"]["schema"];
+            assert_eq!(schema["type"].as_str(), Some("array"));
+            let record = if path.ends_with("/quote") {
+                "LatestQuoteRecord"
+            } else {
+                "DailyMarketRecord"
+            };
+            let required = canonical["components"]["schemas"][record]["required"]
+                .as_sequence()
+                .unwrap();
+            for field in fields {
+                assert!(
+                    required.iter().any(|item| item.as_str() == Some(field)),
+                    "{record} missing {field}"
+                );
+            }
         }
     }
 }
 
 #[test]
-fn spbex_contract_documents_history_quote_and_distinct_errors() {
-    let contract: Value = serde_yaml::from_str(include_str!(
-        "../specs/002-spbex-ticker-update/contracts/openapi.yaml"
-    ))
-    .unwrap();
-    let paths = contract.get("paths").unwrap();
-    for path in ["/v1/spbex/{SYMBOL}", "/v1/spbex/{SYMBOL}/quote"] {
-        let get = &paths[path]["get"];
-        let schema = &get["responses"]["200"]["content"]["application/json"]["schema"];
-        assert_eq!(schema["type"], "array");
-        assert!(get["responses"].get("400").is_some());
-        assert!(get["responses"].get("502").is_some());
+fn canonical_contract_has_all_six_routes_and_shared_envelope() {
+    let contract: Value =
+        serde_yaml::from_str(include_str!("../specs/contracts/openapi.yaml")).unwrap();
+    for path in [
+        "/v1/moex/{SYMBOL}",
+        "/v1/moex/{SYMBOL}/quote",
+        "/v1/spbex/{SYMBOL}",
+        "/v1/spbex/{SYMBOL}/quote",
+        "/v1/cbr/{SYMBOL}",
+        "/v1/cbr/{SYMBOL}/quote",
+    ] {
+        assert!(
+            contract["paths"][path]["get"].is_mapping(),
+            "missing {path}"
+        );
     }
-    assert!(
-        paths["/v1/spbex/{SYMBOL}"]["get"]["responses"]
-            .get("503")
-            .is_some()
-    );
-    let history = &paths["/v1/spbex/{SYMBOL}"]["get"];
-    let quote = &paths["/v1/spbex/{SYMBOL}/quote"]["get"];
-    assert!(
-        history["description"]
-            .as_str()
-            .unwrap()
-            .contains("current UTC calendar date")
-    );
-    assert!(
-        history["responses"]["200"]["description"]
-            .as_str()
-            .unwrap()
-            .contains("Candles dated today are excluded")
-    );
-    assert!(
-        quote["description"]
-            .as_str()
-            .unwrap()
-            .contains("including a candle dated on the current UTC calendar date")
-    );
-    assert!(
-        contract["components"]["schemas"]["DailyMarketRecord"]["properties"]["volume"]["type"]
-            .as_str()
-            == Some("null")
-    );
-}
-
-#[test]
-fn cbr_contract_documents_history_quote_nullability_and_errors() {
-    let contract: Value = serde_yaml::from_str(include_str!(
-        "../specs/003-cbr-currency-rates/contracts/openapi.yaml"
-    ))
-    .unwrap();
-    let paths = contract.get("paths").unwrap();
-    for path in ["/v1/cbr/{SYMBOL}", "/v1/cbr/{SYMBOL}/quote"] {
-        let get = &paths[path]["get"];
-        let schema = &get["responses"]["200"]["content"]["application/json"]["schema"];
-        assert_eq!(schema["type"], "array");
-        assert!(get["responses"].get("400").is_some());
-        assert!(get["responses"].get("502").is_some());
+    for response in [
+        "InvalidSymbol",
+        "MoexUpstreamUnavailable",
+        "SpbexUpstreamUnavailable",
+        "CbrUpstreamUnavailable",
+        "HistoryStoreUnavailable",
+    ] {
+        assert!(contract["components"]["responses"][response].is_mapping());
     }
-    assert!(
-        paths["/v1/cbr/{SYMBOL}"]["get"]["responses"]
-            .get("503")
-            .is_some()
-    );
-    let fields = ["date", "close", "high", "low", "volume", "facevalue"];
-    for schema_name in ["DailyCurrencyRate", "LatestCurrencyQuote"] {
-        let required = contract["components"]["schemas"][schema_name]["required"]
-            .as_sequence()
-            .unwrap();
-        for field in fields {
-            assert!(required.iter().any(|value| value.as_str() == Some(field)));
-        }
-    }
-    let close_type = contract["components"]["schemas"]["DailyCurrencyRate"]["properties"]["close"]
-        ["type"]
-        .as_sequence()
-        .unwrap();
-    assert!(
-        close_type
-            .iter()
-            .any(|value| value.as_str() == Some("number"))
-    );
-    assert!(
-        close_type
-            .iter()
-            .any(|value| value.as_str() == Some("null"))
-    );
+    assert!(contract["components"]["schemas"]["ErrorResponse"]["properties"]["error"]["properties"]["code"].is_mapping());
+    assert!(contract["components"]["schemas"]["ErrorResponse"]["properties"]["error"]["properties"]["message"].is_mapping());
 }

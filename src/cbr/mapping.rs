@@ -1,6 +1,6 @@
 use crate::{
     cbr::models::{DailyRate, DynamicRate, DynamicRates},
-    domain::{DailyMarketRecord, LatestTradeRecord},
+    domain::{DailyMarketRecord, LatestQuoteRecord},
 };
 use anyhow::{Context, bail};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
@@ -20,13 +20,13 @@ pub fn map_history(source: &DynamicRates) -> anyhow::Result<Vec<DailyMarketRecor
     Ok(records)
 }
 
-pub fn map_latest(source: Option<(String, DailyRate)>) -> anyhow::Result<LatestTradeRecord> {
+pub fn map_latest(source: Option<(String, DailyRate)>) -> anyhow::Result<LatestQuoteRecord> {
     let Some((date, rate)) = source else {
-        return Ok(LatestTradeRecord::no_trade());
+        return Ok(LatestQuoteRecord::no_trade());
     };
     let (date, close, facevalue) =
         map_values(&date, rate.value.as_deref(), rate.nominal.as_deref())?;
-    Ok(LatestTradeRecord {
+    Ok(LatestQuoteRecord {
         date: Some(date),
         close,
         high: None,

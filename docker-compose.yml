@@ -1,0 +1,17 @@
+services:
+  exchange-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: exchange-api:local
+    ports:
+      - "8080:8080"
+    environment:
+      EXCHANGE_API_LISTEN_ADDR: "0.0.0.0:8080"
+      EXCHANGE_API_HISTORY_CACHE_DB_PATH: "/var/lib/exchange-api/history.sqlite3"
+    volumes:
+      - exchange-api-history:/var/lib/exchange-api
+    restart: unless-stopped
+
+volumes:
+  exchange-api-history:

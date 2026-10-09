@@ -45,7 +45,7 @@ impl SpbexClient {
             client,
             base,
             max_response_bytes,
-            request_limit: Arc::new(Semaphore::new(8)),
+            request_limit: Arc::new(Semaphore::new(16)),
         })
     }
 

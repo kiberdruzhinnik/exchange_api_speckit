@@ -20,7 +20,7 @@
 - **History-only**: 1,200 scheduled/issued, 0 skipped, 0 errors, observed start rate 10.01 req/s, p95 0.003534 s.
 - **Quote-only**: 1,200 scheduled/issued, 0 skipped, 0 errors, observed start rate 10.01 req/s, p95 0.458487 s.
 - **Combined**: 1,200 scheduled/issued, 0 skipped, 0 errors, observed start rate 10.01 req/s, p95 0.502252 s; route p95 history 0.004526 s and quote 0.764562 s.
-- **Outcome**: All three full-rate profiles pass the one-second p95 gate. Initial tests using sequential per-client waits allowed slower responses to stretch the actual arrival rate; the harness now submits requests on a fixed schedule. Under that valid schedule, ten upstream slots produced quote-only p95 above one second, while five slots also narrowly missed on a full-duration run. The final configuration uses the SPBEX-scoped root CA, a 1-day initial quote window with adaptive expansion, an eight-request upstream concurrency limit, ten benchmark workers, and active SBER. No quote caching was introduced.
+- **Outcome**: All three full-rate profiles pass the one-second p95 gate. Initial tests using sequential per-client waits allowed slower responses to stretch the actual arrival rate; the harness now submits requests on a fixed schedule. Under that valid schedule, ten upstream slots produced quote-only p95 above one second, while five slots also narrowly missed on a full-duration run. The final configuration uses the SPBEX-scoped root CA, a 1-day initial quote window with adaptive expansion, an sixteen-request upstream concurrency limit, ten benchmark workers, and active SBER. No quote caching was introduced.
 
 ## Rust service integration and history persistence
 

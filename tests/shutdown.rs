@@ -20,9 +20,9 @@ fn sigint_stops_the_service_process() {
     drop(reservation);
 
     let child = Command::new(env!("CARGO_BIN_EXE_exchange-api"))
-        .env("LISTEN_ADDR", address.to_string())
+        .env("EXCHANGE_API_LISTEN_ADDR", address.to_string())
         .env(
-            "MOEX_HISTORY_CACHE_DB_PATH",
+            "EXCHANGE_API_HISTORY_CACHE_DB_PATH",
             database.path().join("history.sqlite3"),
         )
         .stdout(Stdio::null())

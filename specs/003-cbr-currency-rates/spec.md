@@ -17,6 +17,11 @@
 - Q: If a CBR history row omits the source value or nominal needed to calculate `close`, should `close` be `null` while a missing or invalid date makes the upstream response an error? → A: Yes. `close` is null when `Value` or `Nominal` is absent; a missing or invalid effective date makes the source response unusable and returns HTTP 502.
 - Q: How should the CBR history request choose its date range to return all available history? → A: Request the currency's entire source-available date range through the latest published date.
 - Q: How broadly should CBR be aligned with MOEX and SPBEX? → A: Align shared API and service requirements, including the response and error contracts, durable history, fresh quotes, performance target, documentation, Linux amd64 image build, and SIGINT shutdown; preserve CBR-specific latest-official-rate quote semantics.
+- Q: Should provider unification cover the public REST contract and common provider behavior, while retaining each provider’s quote meaning? → A: Unify the public REST contract and provider behavior, while retaining provider-specific quote semantics.
+- Q: For the shared REST contract, should all providers use the same symbol normalization, HTTP status categories, empty-history response, and no-quote response? → A: Yes. Trim and uppercase symbols; return 400 for invalid or unsupported symbols, 502 for upstream failures, and 503 for history-store failures; return `[]` for valid empty history and one all-null record for a successful no-quote result.
+- Q: Should shared runtime settings use one common naming scheme and remove the former MOEX-specific names rather than retain aliases? → A: Use a common naming scheme for shared settings and remove the former names without aliases.
+- Q: How should existing provider-specific upstream error codes be handled while standardizing the public error contract? → A: Preserve each provider’s existing upstream error code on its current `/v1` routes; standardize the JSON error envelope and HTTP status behavior so existing clients are not broken.
+- Q: Should the one-second p95 acceptance target apply to CBR routes only or to history and quote routes for all three providers? → A: The hard p95 target applies to all six MOEX, SPBEX, and CBR history and quote routes.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -50,9 +55,9 @@ A client requests the current Bank of Russia rate for a supported currency and r
 
 ### User Story 3 - Handle unsupported currencies and source failures (Priority: P2)
 
-A client can distinguish an unsupported currency code from a temporary Bank of Russia data-source failure.
+A client can distinguish invalid input from temporary source failures, and all provider routes share consistent contracts and configuration.
 
-**Why this priority**: Clear errors prevent clients from treating invalid input or unavailable rates as valid market data.
+**Why this priority**: Clear errors prevent clients from treating invalid input or unavailable rates as valid market data. Shared provider contracts and configuration also make the service predictable across exchanges.
 
 **Independent Test**: Request malformed and unsupported codes and simulate failed or unusable source responses; verify each has its documented outcome.
 
@@ -61,6 +66,10 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 1. **Given** a malformed code or a code absent from the Bank of Russia's supported-currency list, **When** a client requests either route, **Then** the service returns HTTP `400` in the standard JSON error format.
 2. **Given** the Bank of Russia source is unavailable or returns malformed or unusable data, **When** a client requests either route, **Then** the service returns HTTP `502` in the standard JSON error format.
 3. **Given** a history-store operation fails while serving currency history, **When** a client requests history, **Then** the service returns HTTP `503` in the standard JSON error format.
+4. **Given** a client sends a lowercase symbol with surrounding whitespace to any provider route, **When** the request is processed, **Then** the provider receives the trimmed uppercase symbol; malformed or unsupported symbols receive the shared HTTP `400` outcome.
+5. **Given** any provider returns successful empty history or no quote, **When** the corresponding route is requested, **Then** history returns `[]` or quote returns one all-null record, while each provider retains its documented quote meaning.
+6. **Given** all three providers run with shared configuration, **When** the common runtime settings are configured, **Then** the listener, upstream timeout, history-cache TTL, capacity, and database path are shared; provider-specific source URL and response-size settings remain provider-specific.
+7. **Given** a provider handles history or quote operations, **When** it is used by the service, **Then** it supports the common history and quote behavior and returns the shared normalized records and error outcomes.
 
 ### Edge Cases
 
@@ -73,6 +82,7 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - A valid source response has no history rows or no current rate for the currency.
 - The currency code is syntactically valid but is not currently supported by the Bank of Russia.
 - The source response is unavailable, malformed, oversized, or contains invalid dates or non-positive rates.
+- Providers receive the same normalized symbol and return the same validation, dependency, history-store, empty-history, and no-quote outcomes.
 - Persistent history cannot be read or saved.
 
 ## Requirements *(mandatory)*
@@ -96,9 +106,14 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - **FR-014**: Currency history MUST survive application restarts for its applicable freshness period; expired history MUST be refreshed before it is returned.
 - **FR-015**: If the history response cannot be read from or saved to the persistent history store, the history route MUST return HTTP `503` in the standard JSON error format, distinct from a Bank of Russia dependency error.
 - **FR-016**: API documentation MUST describe both routes, supported-currency validation, normalization, six-field response shape and units, null values for unavailable source fields, effective-date behavior, empty results, and client, dependency, and history-store errors, consistent with the shared MOEX and SPBEX API conventions.
-- **FR-017**: Under the project's normal workload of 10 concurrent clients issuing 10 requests per second total, at least 95% of successful responses from each route MUST complete in under one second end to end. This is a hard acceptance gate; if a measurement misses it, the request/source path MUST be optimized and measured again before the feature is complete.
+- **FR-017**: Under a workload of 10 concurrent clients issuing 10 requests per second total, at least 95% of successful responses from each of the six MOEX, SPBEX, and CBR history and quote routes MUST complete in under one second end to end. This is a hard acceptance gate; if any route misses it, the request/source path MUST be optimized and measured again before the feature is complete.
 - **FR-018**: The release process MUST build a Linux amd64 container image. AMD64 acceptance MUST require successful image build only; starting the image or exercising service routes on amd64 is not required.
 - **FR-019**: When the service receives Ctrl+C (SIGINT), it MUST stop accepting new requests, allow in-flight work to finish, and terminate within 30 seconds. Any work still in flight at the deadline MUST be canceled.
+- **FR-020**: MOEX, SPBEX, and CBR MUST provide the same history and quote capabilities using normalized records and shared error outcomes; each provider MUST preserve its documented source mapping and quote meaning.
+- **FR-021**: The public history and quote routes for MOEX, SPBEX, and CBR MUST follow one shared REST contract for route pattern, six-field JSON record shape, array behavior, and JSON error envelope; provider-specific upstream mappings and quote semantics MUST remain documented.
+- **FR-022**: All providers MUST trim and uppercase symbols, return HTTP 400 for malformed or unsupported symbols, HTTP 502 for upstream failures, and HTTP 503 for history-store failures. Valid empty history MUST return `[]`; a successful quote lookup without a quote MUST return one record with all six fields null. Each provider MUST preserve its established upstream error code on its current `/v1` routes while using the shared JSON error envelope and status categories.
+- **FR-023**: Shared runtime settings for the listener, upstream timeout, history-cache freshness, capacity, and storage location MUST apply consistently to all providers. Provider-specific upstream source and response-size settings MAY vary by provider.
+- **FR-024**: Standardizing provider error behavior MUST NOT rename existing upstream error codes on current `/v1` routes; provider-specific codes MUST map to the common HTTP 502 upstream-failure category and standard JSON error envelope.
 
 ### Key Entities *(include if data involved)*
 
@@ -113,11 +128,13 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - **SC-001**: Clients can retrieve all available daily rates for USD, CNY, EUR, and any other supported code through the documented history route.
 - **SC-002**: Every returned numeric `close` is expressed in Russian rubles per one unit of the requested currency, regardless of the source nominal quantity; unavailable fields are represented as JSON `null`.
 - **SC-003**: Quote responses reflect the latest official rate available at request time and include the rate's effective date.
-- **SC-004**: At least 95% of successful history and quote responses complete in under one second under the 10-client, 10-request-per-second workload.
+- **SC-004**: At least 95% of successful responses from each of the six MOEX, SPBEX, and CBR history and quote routes complete in under one second under the 10-client, 10-request-per-second workload.
 - **SC-005**: History remains available across application restarts for its configured freshness period and is refreshed after expiration.
 - **SC-006**: Unsupported codes, valid empty history, absent quote data, source failures, and history-store failures produce distinguishable documented outcomes.
 - **SC-007**: A Linux amd64 container image builds successfully; amd64 runtime startup and route checks are outside acceptance scope.
 - **SC-008**: After Ctrl+C is sent to a running service, it stops accepting new requests and exits within 30 seconds, completing in-flight work where possible and canceling work remaining at the deadline.
+- **SC-009**: MOEX, SPBEX, and CBR expose the same documented history and quote response structure, symbol handling, and error outcomes, while each quote continues to represent its provider-specific data.
+- **SC-010**: Shared runtime settings affect all provider routes consistently; provider-specific source settings can be configured independently.
 
 ## Assumptions
 

@@ -13,7 +13,7 @@ pub struct DailyMarketRecord {
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
-pub struct LatestTradeRecord {
+pub struct LatestQuoteRecord {
     #[serde(serialize_with = "serialize_optional_utc_z")]
     pub date: Option<DateTime<Utc>>,
     pub close: Option<f64>,
@@ -23,7 +23,7 @@ pub struct LatestTradeRecord {
     pub facevalue: Option<f64>,
 }
 
-impl LatestTradeRecord {
+impl LatestQuoteRecord {
     pub fn no_trade() -> Self {
         Self {
             date: None,

@@ -1,5 +1,5 @@
 use super::models::IssTable;
-use crate::domain::{DailyMarketRecord, LatestTradeRecord};
+use crate::domain::{DailyMarketRecord, LatestQuoteRecord};
 use chrono::{NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Europe;
 use serde_json::Value;
@@ -62,9 +62,9 @@ pub fn lotsize(value: &Value) -> anyhow::Result<Option<f64>> {
         .and_then(|value| value.as_f64().or_else(|| value.as_str()?.parse().ok())))
 }
 
-pub fn map_latest_trade(value: &Value) -> anyhow::Result<LatestTradeRecord> {
+pub fn map_latest_trade(value: &Value) -> anyhow::Result<LatestQuoteRecord> {
     let Some(trade) = super::models::parse_latest_trade(value)? else {
-        return Ok(LatestTradeRecord::no_trade());
+        return Ok(LatestQuoteRecord::no_trade());
     };
     let local = NaiveDateTime::parse_from_str(
         &format!("{} {}", trade.trade_date, trade.trade_time),
@@ -75,7 +75,7 @@ pub fn map_latest_trade(value: &Value) -> anyhow::Result<LatestTradeRecord> {
         .single()
         .ok_or_else(|| anyhow::anyhow!("latest trade timestamp is ambiguous or invalid"))?
         .with_timezone(&Utc);
-    Ok(LatestTradeRecord {
+    Ok(LatestQuoteRecord {
         date: Some(utc),
         close: Some(trade.price),
         high: None,

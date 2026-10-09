@@ -35,11 +35,20 @@ def read_cache_events(log_path, offset):
         contents = log.read()
         new_offset = log.tell()
     text = contents.decode("utf-8", errors="replace")
-    source_fetches = re.findall(r'CBR history source fetch started symbol="?([A-Z]{3})"?', text)
-    outcomes = re.findall(
-        r'CBR history request completed symbol=([A-Z]{3}).*?cache="(memory_hit|persistent_hit|miss)"',
-        text,
-    )
+    source_fetches = []
+    outcomes = []
+    for line in text.splitlines():
+        if 'provider="CBR"' not in line:
+            continue
+        symbol = re.search(r'symbol="?([A-Z]{3})"?', line)
+        if not symbol:
+            continue
+        if 'phase="source_fetch"' in line:
+            source_fetches.append(symbol.group(1))
+        elif 'history request completed' in line:
+            cache = re.search(r'cache="(memory_hit|persistent_hit|miss)"', line)
+            if cache:
+                outcomes.append((symbol.group(1), cache.group(1)))
     return new_offset, source_fetches, outcomes
 
 

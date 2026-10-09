@@ -59,7 +59,7 @@
 
 ### Implementation for User Story 2
 
-- [X] T019 [US2] Implement uncached quote handling with 1-day initial lookback, doubling empty windows until a candle is found or Unix epoch is reached, limit concurrent chart-feed requests to eight, and select the newest candle in `src/http/routes.rs` and `src/spbex/client.rs`
+- [X] T019 [US2] Implement uncached quote handling with 1-day initial lookback, doubling empty windows until a candle is found or Unix epoch is reached, limit concurrent chart-feed requests to sixteen, and select the newest candle in `src/http/routes.rs` and `src/spbex/client.rs`
 - [X] T020 [US2] Map successful empty full-range quote results to one record with nullable market fields in `src/spbex/mapping.rs`
 - [X] T021 [US2] Document quote freshness, adaptive lookback, one-record shape, and empty quote response in `specs/002-spbex-ticker-update/contracts/openapi.yaml` and `specs/002-spbex-ticker-update/quickstart.md`
 

@@ -15,10 +15,11 @@ Optional environment variables:
 |---|---|---|
 | `SPBEX_API_BASE_URL` | `https://spbexchange.ru/api` | Public chart-feed base URL; override for fixture/mock tests. |
 | `SPBEX_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one chart-feed response. |
-| `MOEX_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout, including SPBEX. |
-| `MOEX_HISTORY_CACHE_TTL_SECS` | `60` | Existing history freshness period. |
-| `MOEX_HISTORY_CACHE_MAX_BYTES` | `67108864` | Existing aggregate history-cache payload limit. |
-| `MOEX_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Existing SQLite history-store path. |
+| `EXCHANGE_API_LISTEN_ADDR` | `0.0.0.0:8080` | Shared service listen address. |
+| `EXCHANGE_API_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout, including SPBEX. |
+| `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` | `60` | Existing history freshness period. |
+| `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` | `67108864` | Existing aggregate history-cache payload limit. |
+| `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Existing SQLite history-store path. |
 
 ## Local checks
 
@@ -32,7 +33,7 @@ cargo test
 Start the local service using the configured persistent history path:
 
 ```sh
-MOEX_HISTORY_CACHE_DB_PATH=./exchange-api-data/history.sqlite3 cargo run
+EXCHANGE_API_HISTORY_CACHE_DB_PATH=./exchange-api-data/history.sqlite3 cargo run
 ```
 
 In another terminal, request both routes (replace `SYMBOL` with a known SPBEX listing):
@@ -76,3 +77,13 @@ Final validation on 2026-10-08: Semgrep scanned 21 Rust source files and reporte
 The application is intended for a private network. SPBEX routes do not add application-level authentication. Request completion logs include the normalized symbol, cache outcome, status, outcome category, and elapsed time; dependency and store failures are logged with diagnostic context.
 
 The SPBEX client's TLS verifier uses the Russian Trusted Root CA as an additional trust anchor for that client only. The rest of the service keeps the platform trust store.
+
+## Final shared-provider latency acceptance
+
+On 2026-10-09, the final shared-handler binary was measured against production SPBEX using SBER and 10 concurrent clients at 10 total requests per second. Each timed profile scheduled and issued all 1,200 requests with zero skips and zero upstream errors. History-only p95 was 0.003834 s, quote-only p95 with the final 16-request upstream limit was 0.751137 s, and combined overall p95 was 0.611771 s (history 0.002233 s, quote 0.912929 s). The combined result improved from an initial 1.225619-second quote p95 after increasing the upstream concurrency allowance from eight to sixteen. The history cache was warmed before timed profiles and configured with a 300-second test TTL to avoid an expiry refresh interrupting fixed-arrival measurements.
+
+Final shared-provider quality gates on 2026-10-09 passed: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (81 tests), `cargo test --test shutdown` (3 tests), and the Linux amd64 Docker image build. Semgrep reported zero findings and Trivy reported zero fixable High/Critical image vulnerabilities; detailed final scan results are recorded in the CBR quickstart.
+
+## Production history cache lifecycle
+
+The separate `scripts/measure-spbex-latency.sh --profile lifecycle --symbols SBER` probe uses a fresh temporary store and measures cold fetch, warm memory hit, and expiry-triggered source refresh without mixing those requests into a fixed-arrival profile. On 2026-10-09, cold history returned 200 in 0.491263 s (`miss`, one source fetch), warm history returned 200 in 0.000484 s (`memory_hit`, no fetch), and the expiry refresh returned 200 in 0.226268 s (`miss`, one source fetch). The probe verified all three transitions with the default 15-second upstream timeout.

@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 
 const DIRECTORY_TTL: Duration = Duration::from_secs(60);
 const HISTORY_START_DATE: &str = "01/01/1990";
+type CachedDirectory = Arc<RwLock<Option<(Instant, Vec<CurrencyItem>)>>>;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum CbrError {
@@ -23,7 +24,7 @@ pub struct CbrClient {
     client: Client,
     base: Url,
     max_response_bytes: usize,
-    directory: Arc<RwLock<Option<(Instant, Vec<CurrencyItem>)>>>,
+    directory: CachedDirectory,
 }
 
 impl CbrClient {

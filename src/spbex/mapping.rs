@@ -1,5 +1,5 @@
 use crate::{
-    domain::{DailyMarketRecord, LatestTradeRecord},
+    domain::{DailyMarketRecord, LatestQuoteRecord},
     spbex::models::SourceCandle,
 };
 use chrono::{DateTime, NaiveDate, Utc};
@@ -28,12 +28,12 @@ pub fn map_history(
     Ok(records)
 }
 
-pub fn map_latest(candle: Option<&SourceCandle>) -> anyhow::Result<LatestTradeRecord> {
+pub fn map_latest(candle: Option<&SourceCandle>) -> anyhow::Result<LatestQuoteRecord> {
     let Some(candle) = candle else {
-        return Ok(LatestTradeRecord::no_trade());
+        return Ok(LatestQuoteRecord::no_trade());
     };
     let record = map_candle(candle)?;
-    Ok(LatestTradeRecord {
+    Ok(LatestQuoteRecord {
         date: Some(record.date),
         close: record.close,
         high: record.high,

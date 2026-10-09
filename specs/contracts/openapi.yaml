@@ -1,0 +1,330 @@
+openapi: 3.1.0
+info:
+  title: Exchange API
+  version: 1.0.0
+  description: Canonical REST contract for MOEX, SPBEX, and Bank of Russia currency rates.
+servers:
+  - url: /
+paths:
+  /v1/moex/{SYMBOL}:
+    get:
+      operationId: getMoexTickerHistory
+      summary: Get daily history for a MOEX ticker
+      description: Returns daily records from MOEX in ascending date order. `facevalue` is the board-specific current LOTSIZE selected for each trading date.
+      parameters:
+        - $ref: '#/components/parameters/MoexSymbol'
+      responses:
+        '200':
+          description: Ordered history records, or an empty array when no records are available.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyMarketRecord'
+              example:
+                - date: '2013-03-25T00:00:00Z'
+                  close: 73.35
+                  high: 75.05
+                  low: 73.21
+                  volume: 120300
+                  facevalue: 1
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/MoexUpstreamUnavailable'
+        '503':
+          $ref: '#/components/responses/HistoryStoreUnavailable'
+  /v1/moex/{SYMBOL}/quote:
+    get:
+      operationId: getMoexTickerLatestTrade
+      summary: Get the latest executed trade for a MOEX ticker
+      description: Fetches the latest trade for each request. Returns one history-shaped record; a successful response with no trade returns one all-null record. Quote responses are not cached.
+      parameters:
+        - $ref: '#/components/parameters/MoexSymbol'
+      responses:
+        '200':
+          description: Exactly one latest-trade record, or one all-null record when MOEX reports no trade.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestQuoteRecord'
+              example:
+                - date: '2026-10-08T08:41:57Z'
+                  close: 280.34
+                  high: null
+                  low: null
+                  volume: 1
+                  facevalue: null
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/MoexUpstreamUnavailable'
+  /v1/spbex/{SYMBOL}:
+    get:
+      operationId: getSpbexTickerHistory
+      summary: Get daily history for an SPBEX ticker
+      description: Returns daily candles dated before the current UTC calendar date in ascending order. `volume` is null because the chart feed has no volume field; `facevalue` is 1.
+      parameters:
+        - $ref: '#/components/parameters/SpbexSymbol'
+      responses:
+        '200':
+          description: Ordered candle records, or an empty array when no historical candles are available.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyMarketRecord'
+              example:
+                - date: '2013-03-25T00:00:00Z'
+                  close: 73.35
+                  high: 75.05
+                  low: 73.21
+                  volume: null
+                  facevalue: 1
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/SpbexUpstreamUnavailable'
+        '503':
+          $ref: '#/components/responses/HistoryStoreUnavailable'
+  /v1/spbex/{SYMBOL}/quote:
+    get:
+      operationId: getSpbexTickerLatestCandle
+      summary: Get the latest available daily candle for an SPBEX ticker
+      description: Fetches the chart feed for each request and returns its newest available candle, including one dated today. Quote responses are not cached. A successful empty result returns one all-null record.
+      parameters:
+        - $ref: '#/components/parameters/SpbexSymbol'
+      responses:
+        '200':
+          description: Exactly one latest-candle record, or one all-null record when no candle is available.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestQuoteRecord'
+              example:
+                - date: '2026-10-08T00:00:00Z'
+                  close: 73.35
+                  high: 75.05
+                  low: 73.21
+                  volume: null
+                  facevalue: 1
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/SpbexUpstreamUnavailable'
+  /v1/cbr/{SYMBOL}:
+    get:
+      operationId: getCbrCurrencyHistory
+      summary: Get daily history for a Bank of Russia currency
+      description: Returns all available official rates ordered oldest to newest. `close` is RUB per one currency unit (`Value / Nominal`); `facevalue` is the source nominal. CBR does not publish high, low, or volume, so those values are null.
+      parameters:
+        - $ref: '#/components/parameters/CbrSymbol'
+      responses:
+        '200':
+          description: Ordered daily rates, or an empty array when a successful source response contains no history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyMarketRecord'
+              example:
+                - date: '2013-03-25T00:00:00Z'
+                  close: 0.05
+                  high: null
+                  low: null
+                  volume: null
+                  facevalue: 100
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/CbrUpstreamUnavailable'
+        '503':
+          $ref: '#/components/responses/HistoryStoreUnavailable'
+  /v1/cbr/{SYMBOL}/quote:
+    get:
+      operationId: getCbrCurrencyQuote
+      summary: Get the latest available Bank of Russia currency rate
+      description: Fetches the latest official rate on every request. If no rate is published today, the latest available rate and its effective date are returned. A successful response without a rate returns one all-null record.
+      parameters:
+        - $ref: '#/components/parameters/CbrSymbol'
+      responses:
+        '200':
+          description: Exactly one latest-rate record, or one all-null record when no rate is available.
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  $ref: '#/components/schemas/LatestQuoteRecord'
+              example:
+                - date: '2026-10-09T00:00:00Z'
+                  close: 92.5
+                  high: null
+                  low: null
+                  volume: null
+                  facevalue: 1
+        '400':
+          $ref: '#/components/responses/InvalidSymbol'
+        '502':
+          $ref: '#/components/responses/CbrUpstreamUnavailable'
+components:
+  parameters:
+    MoexSymbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: MOEX security identifier; surrounding whitespace is trimmed and letters are uppercased before provider validation.
+      schema:
+        type: string
+        minLength: 1
+        pattern: '^[A-Za-z0-9._-]+$'
+    SpbexSymbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: SPBEX instrument symbol; surrounding whitespace is trimmed and letters are uppercased before provider validation.
+      schema:
+        type: string
+        minLength: 1
+        pattern: '^[A-Za-z0-9._-]+$'
+    CbrSymbol:
+      name: SYMBOL
+      in: path
+      required: true
+      description: Supported Bank of Russia ISO currency code; surrounding whitespace is trimmed and letters are uppercased before support validation.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 3
+        pattern: '^[A-Za-z]{3}$'
+  schemas:
+    DailyMarketRecord:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: string
+          format: date-time
+          description: Source effective date or trading date at UTC midnight.
+          example: '2013-03-25T00:00:00Z'
+        close:
+          type: [number, 'null']
+          description: Provider-specific normalized closing value; null when unavailable.
+        high:
+          type: [number, 'null']
+          description: Provider-specific daily high; null when unavailable.
+        low:
+          type: [number, 'null']
+          description: Provider-specific daily low; null when unavailable.
+        volume:
+          type: [number, 'null']
+          description: Traded volume when supplied; null when unavailable.
+        facevalue:
+          type: [number, 'null']
+          description: Provider-specific face value, lot size, nominal, or constant when specified; null when unavailable.
+    LatestQuoteRecord:
+      type: object
+      additionalProperties: false
+      required: [date, close, high, low, volume, facevalue]
+      properties:
+        date:
+          type: [string, 'null']
+          format: date-time
+          description: Provider event/effective time in UTC; null when a successful lookup has no quote.
+        close:
+          type: [number, 'null']
+          description: Provider-specific quote value; null when a successful lookup has no quote.
+        high:
+          type: [number, 'null']
+          description: Quote high where applicable; otherwise null.
+        low:
+          type: [number, 'null']
+          description: Quote low where applicable; otherwise null.
+        volume:
+          type: [number, 'null']
+          description: Trade size where applicable; otherwise null.
+        facevalue:
+          type: [number, 'null']
+          description: Provider-specific value where applicable; otherwise null.
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: "`invalid_symbol` and `history_store_unavailable` are shared; upstream errors retain the existing provider-specific code on `/v1` routes."
+              examples: [invalid_symbol, moex_unavailable, spbex_unavailable, cbr_unavailable, history_store_unavailable]
+            message:
+              type: string
+              description: Client-actionable message that does not expose internal diagnostics.
+  responses:
+    InvalidSymbol:
+      description: Symbol is malformed or unsupported (HTTP 400).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: invalid_symbol
+              message: Symbol is malformed or unsupported
+    HistoryStoreUnavailable:
+      description: History could not be read from or saved to the persistent history store (HTTP 503).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: history_store_unavailable
+              message: Ticker history is temporarily unavailable
+    MoexUpstreamUnavailable:
+      description: MOEX ISS failed or returned unusable data (HTTP 502); retains the existing `moex_unavailable` code.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: moex_unavailable
+              message: MOEX market data is temporarily unavailable
+    SpbexUpstreamUnavailable:
+      description: SPBEX failed or returned unusable data (HTTP 502); retains the existing `spbex_unavailable` code.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: spbex_unavailable
+              message: SPBEX market data is temporarily unavailable
+    CbrUpstreamUnavailable:
+      description: Bank of Russia failed or returned unusable data (HTTP 502); retains the existing `cbr_unavailable` code.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: cbr_unavailable
+              message: Bank of Russia currency data is temporarily unavailable

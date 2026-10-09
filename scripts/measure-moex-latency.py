@@ -8,6 +8,8 @@ import math
 import time
 import urllib.parse
 
+from latency_lifecycle import run_lifecycle
+
 
 def request_once(url, route, symbol, client_id):
     started = time.perf_counter()
@@ -128,6 +130,9 @@ def main():
     parser.add_argument("--base-url", default="http://127.0.0.1:18080")
     parser.add_argument("--duration-seconds", type=int, default=120)
     parser.add_argument("--symbols", default="SBER,GAZP,VTBR,ROSN")
+    parser.add_argument("--profile", choices=("all", "history", "quote", "combined", "lifecycle"), default="all")
+    parser.add_argument("--server-log")
+    parser.add_argument("--history-cache-ttl-seconds", type=int, default=300)
     args = parser.parse_args()
     endpoint = urllib.parse.urlsplit(args.base_url)
     if endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost", "::1"}:
@@ -136,7 +141,12 @@ def main():
     if len(args.symbols) == 0 or args.duration_seconds <= 0:
         parser.error("duration must be positive and at least one symbol is required")
     print("profile=10_clients target_total_rps=10 body_fully_read=true", flush=True)
-    for mode in ("history", "quote", "combined"):
+    if args.profile == "lifecycle":
+        if not run_lifecycle(args, "MOEX"):
+            raise SystemExit("MOEX history cache lifecycle verification failed")
+        return
+    modes = ("history", "quote", "combined") if args.profile == "all" else (args.profile,)
+    for mode in modes:
         run_stage(args, mode)
 
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-07
 
-**Status**: Sealed
+**Status**: Completed
 
 **Input**: User description: "implement MOEX ticker update from SYMBOL from /v1/moex/<SYMBOL> REST API, which should be fetched from iss.moex.com and return something like JSON: [{\"date\":\"2013-03-25T00:00:00Z\",\"close\":73.35,\"high\":75.05,\"low\":73.21,\"volume\":120300,\"facevalue\":1},...]"
 

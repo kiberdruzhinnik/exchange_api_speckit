@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-09
 
-**Status**: Sealed
+**Status**: Completed
 
 **Input**: User description: "make sure that cache on history endpoint lives forever and new data is fetched into cache on new subsequent requests"
 

@@ -53,9 +53,19 @@ scripts/measure-cbr-latency.sh
 
 Recorded production run: 2026-10-09, symbol `USD`, production CBR source, local optimized binary. The lifecycle probe returned 200 for cold, warm, and expiry requests and observed one cold source fetch, one warm memory hit, and one expiry-triggered source fetch at the 60-second TTL. Each 55-second timed profile issued all 550 scheduled arrivals (10 concurrent clients, 10 total requests/second), with zero skips and errors: history-only p95 0.002810 s; quote-only p95 0.059297 s; combined overall p95 0.047897 s, history p95 0.002958 s, and quote p95 0.145707 s. An earlier exploratory run saw intermittent CBR HTTP 429 responses, which the API reports as HTTP 502; the final instrumented run had no dependency errors. The harness rejects skipped or under-rate timed profiles and any route p95 at or above one second.
 
+## SIGINT shutdown
+
+Run the service locally and press Ctrl+C in its terminal. It stops accepting new requests, allows in-flight work to finish, and exits within 30 seconds; remaining work is canceled at the deadline. The same process-level behavior is shared by MOEX, SPBEX, and CBR. The process-level shutdown checks verify Ctrl+C handling, stop-accepting behavior, completion of a controlled in-flight HTTP request, and cancellation after a test deadline. Run them with:
+
+```sh
+cargo test --test shutdown
+```
+
+Recorded shutdown acceptance on 2026-10-09: `cargo test --test shutdown` passed all 3 tests. The process-level test sent SIGINT, observed a successful exit within the 30-second limit, and confirmed the listener no longer accepted connections. A controlled in-flight request completed during drain. The cancellation test used a shortened grace interval to verify remaining work is canceled at the deadline; the service configures the production grace period to 30 seconds.
+
 ## Container and final scans
 
-Build the required amd64 image; build success is the amd64 acceptance check. Preserve existing arm64 build/runtime support.
+Build the required amd64 image; build success is the amd64 acceptance check, with no amd64 runtime startup or route checks required. Preserve existing arm64 build/runtime support.
 
 ```sh
 docker buildx build --platform linux/amd64 --load -t exchange-api:cbr-amd64 .

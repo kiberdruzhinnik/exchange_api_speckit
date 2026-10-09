@@ -161,5 +161,10 @@
 
 ## Phase 7: Convergence
 
-- [X] T031 Add a CBR client test for an oversized chunked or unknown-length history response and verify the streamed byte limit rejects it per T019 and FR-013 (partial).
-- [X] T032 Instrument the production latency run to verify and report history cold-source fetches, warm-cache hits, and expiry-triggered refreshes per plan: Performance Goals (partial).
+- [X] T031 Add an oversized chunked or unknown-length history response test in `tests/cbr_client.rs` and verify the streamed byte limit in `src/cbr/client.rs` rejects it per T019 and FR-013 (partial).
+- [X] T032 Instrument the production latency run in `scripts/measure-cbr-latency.py` to verify and report history cold-source fetches, warm-cache hits, and expiry-triggered refreshes in `specs/003-cbr-currency-rates/quickstart.md` per plan: Performance Goals (partial).
+- [X] T033 Run the shared SIGINT shutdown acceptance (`cargo test --test shutdown`) for CBR per FR-019 and SC-008, confirm new requests stop while in-flight work drains and the 30-second deadline cancels remaining work, and record the result in `specs/003-cbr-currency-rates/quickstart.md`.
+
+## Phase 8: Convergence
+
+- [X] T034 Run the existing SIGINT shutdown acceptance with `cargo test --test shutdown` and record the actual result in `specs/003-cbr-currency-rates/quickstart.md`, confirming request acceptance stops, in-flight work drains, and remaining work is canceled by the 30-second deadline per T033, FR-019, and SC-008 (partial).

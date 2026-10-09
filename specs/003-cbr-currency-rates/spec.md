@@ -16,6 +16,7 @@
 - Q: How should rates quoted for multiple currency units be represented? → A: Normalize every rate to Russian rubles per one currency unit; for example, 100 units = 5 rubles becomes `close: 0.05`.
 - Q: If a CBR history row omits the source value or nominal needed to calculate `close`, should `close` be `null` while a missing or invalid date makes the upstream response an error? → A: Yes. `close` is null when `Value` or `Nominal` is absent; a missing or invalid effective date makes the source response unusable and returns HTTP 502.
 - Q: How should the CBR history request choose its date range to return all available history? → A: Request the currency's entire source-available date range through the latest published date.
+- Q: How broadly should CBR be aligned with MOEX and SPBEX? → A: Align shared API and service requirements, including the response and error contracts, durable history, fresh quotes, performance target, documentation, Linux amd64 image build, and SIGINT shutdown; preserve CBR-specific latest-official-rate quote semantics.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -94,8 +95,10 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - **FR-013**: Source transport failures, unsuccessful responses, oversized or malformed payloads, and unusable rate records MUST return HTTP `502` using the standard JSON dependency-error format.
 - **FR-014**: Currency history MUST survive application restarts for its applicable freshness period; expired history MUST be refreshed before it is returned.
 - **FR-015**: If the history response cannot be read from or saved to the persistent history store, the history route MUST return HTTP `503` in the standard JSON error format, distinct from a Bank of Russia dependency error.
-- **FR-016**: API documentation MUST describe both routes, supported-currency validation, normalization, six-field response shape and units, null values for unavailable source fields, effective-date behavior, empty results, and client, dependency, and history-store errors.
-- **FR-017**: Under the project's normal workload of 10 concurrent clients issuing 10 requests per second total, at least 95% of successful responses from each route MUST complete in under one second end to end. This is a hard acceptance gate.
+- **FR-016**: API documentation MUST describe both routes, supported-currency validation, normalization, six-field response shape and units, null values for unavailable source fields, effective-date behavior, empty results, and client, dependency, and history-store errors, consistent with the shared MOEX and SPBEX API conventions.
+- **FR-017**: Under the project's normal workload of 10 concurrent clients issuing 10 requests per second total, at least 95% of successful responses from each route MUST complete in under one second end to end. This is a hard acceptance gate; if a measurement misses it, the request/source path MUST be optimized and measured again before the feature is complete.
+- **FR-018**: The release process MUST build a Linux amd64 container image. AMD64 acceptance MUST require successful image build only; starting the image or exercising service routes on amd64 is not required.
+- **FR-019**: When the service receives Ctrl+C (SIGINT), it MUST stop accepting new requests, allow in-flight work to finish, and terminate within 30 seconds. Any work still in flight at the deadline MUST be canceled.
 
 ### Key Entities *(include if data involved)*
 
@@ -113,6 +116,8 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - **SC-004**: At least 95% of successful history and quote responses complete in under one second under the 10-client, 10-request-per-second workload.
 - **SC-005**: History remains available across application restarts for its configured freshness period and is refreshed after expiration.
 - **SC-006**: Unsupported codes, valid empty history, absent quote data, source failures, and history-store failures produce distinguishable documented outcomes.
+- **SC-007**: A Linux amd64 container image builds successfully; amd64 runtime startup and route checks are outside acceptance scope.
+- **SC-008**: After Ctrl+C is sent to a running service, it stops accepting new requests and exits within 30 seconds, completing in-flight work where possible and canceling work remaining at the deadline.
 
 ## Assumptions
 
@@ -121,5 +126,5 @@ A client can distinguish an unsupported currency code from a temporary Bank of R
 - The user intends the `close` value to mean Russian rubles per one unit of foreign currency. Source rates expressed per multiple units are normalized to one unit, and the source nominal is exposed as `facevalue` when present.
 - The rate's source effective date is returned. On weekends, holidays, or before a new rate is published, the quote uses the latest available official rate and does not invent a rate for today's date.
 - Currency support is determined from the Bank of Russia's current public currency list rather than a hard-coded list, so changes to supported currencies are reflected.
-- The history and quote routes follow the existing service's durable-history and uncached-quote behavior. The existing application is intended for a private network and does not require application-level authentication for these routes.
-- The standard service JSON error envelope is reused. Existing MOEX and SPBEX route behavior remains unchanged.
+- Shared route behavior follows the MOEX and SPBEX conventions: the six-field history-shaped JSON records, standard JSON error envelope, durable history, fresh uncached quotes, and common performance and service acceptance requirements. Provider-specific data mapping remains distinct: CBR quotes return the latest official rate, MOEX quotes return the latest executed trade, and SPBEX quotes return the latest available daily candle.
+- The existing application is intended for a private network and does not require application-level authentication for these routes.

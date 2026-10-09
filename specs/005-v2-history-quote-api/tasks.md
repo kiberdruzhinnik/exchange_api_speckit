@@ -26,9 +26,9 @@
 
 **Purpose**: Define the public route contract and provider selection shared by both user stories.
 
-- [ ] T001 [P] Add the provider enum, v2 path templates, response and error schemas, and retained v1 routes to `specs/005-v2-history-quote-api/contracts/openapi-v2.yaml` and `specs/contracts/openapi.yaml`.
-- [ ] T002 [P] Map unknown providers to HTTP 400 with the shared `invalid_provider` error envelope in `src/http/errors.rs`.
-- [ ] T003 Add provider selection for exactly `moex`, `spbex`, and `cbr` in `src/http/routes.rs`, using the error from T002 for unsupported values.
+- [X] T001 [P] Add the provider enum, v2 path templates, response and error schemas, and retained v1 routes to `specs/005-v2-history-quote-api/contracts/openapi-v2.yaml` and `specs/contracts/openapi.yaml`.
+- [X] T002 [P] Map unknown providers to HTTP 400 with the shared `invalid_provider` error envelope in `src/http/errors.rs`.
+- [X] T003 Add provider selection for exactly `moex`, `spbex`, and `cbr` in `src/http/routes.rs`, using the error from T002 for unsupported values.
 
 **Checkpoint**: Both user stories can use the shared provider selection and public error contract.
 
@@ -40,12 +40,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T004 [US1] Add v2 history provider-dispatch, empty-history (`[]`), invalid-input, upstream/store error, and v1 compatibility tests in `tests/api_contract.rs`, `tests/api_spbex.rs`, `tests/api_cbr.rs`, and `tests/api_errors.rs`.
-- [ ] T005 [P] [US1] Assert both v2 paths, provider values, response schemas, errors, and retained v1 paths in `tests/api_contract_schema.rs`.
+- [X] T004 [US1] Add v2 history provider-dispatch, empty-history (`[]`), invalid-input, upstream/store error, and v1 compatibility tests in `tests/api_contract.rs`, `tests/api_spbex.rs`, `tests/api_cbr.rs`, and `tests/api_errors.rs`.
+- [X] T005 [P] [US1] Assert both v2 paths, provider values, response schemas, errors, and retained v1 paths in `tests/api_contract_schema.rs`.
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Register `GET /v2/history/{provider}/{symbol}` in `src/http/routes.rs`, dispatch through the selected adapter, and reuse `serve_history` for normalization, complete-history assembly, persistence, and established error behavior.
+- [X] T006 [US1] Register `GET /v2/history/{provider}/{symbol}` in `src/http/routes.rs`, dispatch through the selected adapter, and reuse `serve_history` for normalization, complete-history assembly, persistence, and established error behavior.
 
 **Checkpoint**: V2 history works for MOEX, SPBEX, and CBR without removing existing v1 history routes.
 
@@ -57,11 +57,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T007 [US2] Add v2 quote dispatch, response shape, freshness, no-quote, error, and v1 compatibility checks in `tests/api_quote.rs`, `tests/api_spbex.rs`, and `tests/api_cbr.rs`.
+- [X] T007 [US2] Add v2 quote dispatch, response shape, freshness, no-quote, error, and v1 compatibility checks in `tests/api_quote.rs`, `tests/api_spbex.rs`, and `tests/api_cbr.rs`.
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Register `GET /v2/quote/{provider}/{symbol}` in `src/http/routes.rs`, dispatch through the selected adapter, and reuse `serve_quote` to preserve provider-specific quote meaning and error behavior.
+- [X] T008 [US2] Register `GET /v2/quote/{provider}/{symbol}` in `src/http/routes.rs`, dispatch through the selected adapter, and reuse `serve_quote` to preserve provider-specific quote meaning and error behavior.
 
 **Checkpoint**: V2 quotes work for all three providers and all existing v1 quote routes remain available.
 
@@ -69,10 +69,10 @@
 
 **Purpose**: Meet and document the six-route performance acceptance criterion, including MOEX's separate cold-fetch measurement and warm-cache gate, then complete release validation.
 
-- [ ] T009 Run the six separate v2 profiles with 10 concurrent clients and 10 total requests per second using `scripts/measure-v2-latency.py`; for MOEX history first report the initial uncached full-fetch HTTP status and elapsed time separately, then run its gated profile after a successful full-history cache population; record p95, under-one-second success rate, errors, and missed slots for every profile in `specs/005-v2-history-quote-api/quickstart.md`.
-- [ ] T010 If a populated-cache history profile fails SC-005, inspect and resolve the request-latency or arrival-rate bottleneck in `src/http/routes.rs`, `src/cache.rs`, `src/cache_store.rs`, `src/provider.rs`, `src/moex/provider.rs`, `src/moex/client.rs`, `src/spbex/provider.rs`, `src/spbex/client.rs`, `src/cbr/provider.rs`, or `src/cbr/client.rs`; rerun the affected profile and record results in `specs/005-v2-history-quote-api/quickstart.md` without weakening SC-005.
-- [ ] T011 Update `specs/005-v2-history-quote-api/quickstart.md` with verified v2 examples, invalid-provider behavior, v1 compatibility, the separate MOEX cold-fetch procedure, and cache-populated acceptance results.
-- [ ] T012 Build the Linux amd64 image from `Dockerfile`, run Semgrep against the source and Trivy against the built image, resolve required findings, and record commands and results in `specs/005-v2-history-quote-api/quickstart.md`.
+- [X] T009 Run the six separate v2 profiles with 10 concurrent clients and 10 total requests per second using `scripts/measure-v2-latency.py`; for MOEX history first report the initial uncached full-fetch HTTP status and elapsed time separately, then run its gated profile after a successful full-history cache population; record p95, under-one-second success rate, errors, and missed slots for every profile in `specs/005-v2-history-quote-api/quickstart.md`.
+- [X] T010 If a populated-cache history profile fails SC-005, inspect and resolve the request-latency or arrival-rate bottleneck in `src/http/routes.rs`, `src/cache.rs`, `src/cache_store.rs`, `src/provider.rs`, `src/moex/provider.rs`, `src/moex/client.rs`, `src/spbex/provider.rs`, `src/spbex/client.rs`, `src/cbr/provider.rs`, or `src/cbr/client.rs`; rerun the affected profile and record results in `specs/005-v2-history-quote-api/quickstart.md` without weakening SC-005.
+- [X] T011 Update `specs/005-v2-history-quote-api/quickstart.md` with verified v2 examples, invalid-provider behavior, v1 compatibility, the separate MOEX cold-fetch procedure, and cache-populated acceptance results.
+- [X] T012 Build the Linux amd64 image from `Dockerfile`, run Semgrep against the source and Trivy against the built image, resolve required findings, and record commands and results in `specs/005-v2-history-quote-api/quickstart.md`.
 
 ## Dependencies & Execution Order
 

@@ -94,32 +94,33 @@ The runner records successful-response p95, the fraction of successful responses
 
 ## Implementation validation results
 
-**Fixture-backed v2 latency profile (2026-10-09)**: Ran six separate 10-second profiles (100 scheduled requests per route), with 10 concurrent clients and 10 requests per second, after warming the routes. All profiles issued 100 requests, had 100 successful responses, zero errors, zero missed slots, and 100/100 successful responses under one second. The recorded profile is a warm-cache measurement for MOEX history; the initial MOEX full-fetch latency was not recorded separately in this run.
+**Fixture-backed v2 latency acceptance profile (2026-10-10)**: Started with a fresh SQLite database. The initial uncached MOEX history request returned HTTP 200 in 0.004339 seconds against the one-page fixture and populated the collection; the six-route workload then ran after warming all routes. Each profile ran for 55 seconds with 550 scheduled requests, 10 concurrent clients, and 10 requests per second. All profiles issued 550 requests, returned 550 successes, had zero errors and zero missed slots, and had 550/550 successful responses under one second.
 
-| Route | Successful p95 |
-|---|---:|
-| MOEX history | 0.006428 s |
-| MOEX quote | 0.003606 s |
-| SPBEX history | 0.005446 s |
-| SPBEX quote | 0.003535 s |
-| CBR history | 0.005250 s |
-| CBR quote | 0.004934 s |
+| Route | Successful p95 | Under one second | Errors | Missed slots |
+|---|---:|---:|---:|---:|
+| MOEX history (populated cache) | 0.007175 s | 550/550 | 0 | 0 |
+| MOEX quote | 0.003819 s | 550/550 | 0 | 0 |
+| SPBEX history (warmed) | 0.011301 s | 550/550 | 0 | 0 |
+| SPBEX quote | 0.005003 s | 550/550 | 0 | 0 |
+| CBR history (warmed) | 0.006338 s | 550/550 | 0 | 0 |
+| CBR quote | 0.004519 s | 550/550 | 0 | 0 |
 
-A separate diagnostic profile against public upstreams passed for all three quote routes (MOEX 0.598259 s, SPBEX 0.327543 s, CBR 0.318874 s p95). Public-source history diagnostics recorded MOEX p95 17.558618 s (8 successes, 2 HTTP 502 errors, 90 missed slots), SPBEX p95 1.044326 s (99 successes, 1 missed slot), and CBR p95 2.855501 s (81 successes, 19 missed slots). These existing diagnostics do not document a separately timed initial MOEX fetch followed by a verified populated-cache run, so they do not establish SC-005 for public-source history. Repeat them using the cache-state procedure above before treating them as acceptance results. Source-backed results vary with upstream availability and latency; fixture-backed results measure the service route and storage path under a stable source.
+**Public-source MOEX cold-fetch diagnostic (2026-10-10)**: With a separate fresh database, the initial MOEX full-history request returned HTTP 200 in 5.031771 seconds and persisted 3,423 records. This exceeds one second, as expected for a paginated cold fetch, and is reported separately from the cache-populated acceptance target.
 
-**Linux amd64 build (2026-10-09)**: `docker buildx build --platform linux/amd64 -t exchange-api:v2-history-quote-api --load .` completed successfully.
+**Public-source diagnostics (2026-10-10)**: A subsequent run against the same service process measured the populated-cache MOEX history route at 0.692063 s p95, with 537/546 successful responses under one second, one HTTP 502, and 3 missed request slots (547/550 issued). Its successful-response latency fraction met the threshold, but the runner marked the profile's arrival schedule invalid. MOEX quote passed at 0.462408 s p95 (549/550 under one second; no errors or missed slots). SPBEX history recorded 0.453220 s p95 (530/540 under one second; no errors; 10 missed slots), and SPBEX quote passed at 0.380976 s p95 (550/550 under one second; no errors or missed slots). These SPBEX profiles were not preceded by the required warm-up, so they are diagnostic only. CBR history recorded 1.848394 s p95 among 143 successful responses (133/143 under one second), with 394 HTTP 502 errors and 13 missed slots; CBR quote recorded 0.081780 s p95 among 208 successful responses (208/208 under one second), with 342 HTTP 502 errors. Service logs identify upstream HTTP 429 rate limits for the CBR errors. These public-source results are diagnostics, not the controlled SC-005 acceptance run; they show external source limits and must not be presented as fixture-backed acceptance results.
+**Linux amd64 build (2026-10-10)**: `docker buildx build --platform linux/amd64 -t exchange-api:v2-history-quote-api --load .` completed successfully.
 
-**Semgrep (2026-10-09)**: Source scan completed with 0 findings. The two newly added Python scripts were scanned explicitly with `--no-git-ignore`; 0 findings.
+**Semgrep (2026-10-10)**: The tracked-source scan completed with 0 findings across 139 files. Because the two benchmark scripts are untracked, they were scanned separately with `--no-git-ignore`; that scan covered 2 files and also found 0 issues.
 
 ```sh
-docker run --rm -v "$PWD:/src" semgrep/semgrep:latest semgrep scan --config auto /src
-docker run --rm -v "$PWD:/src" semgrep/semgrep:latest semgrep scan --config auto --no-git-ignore /src/scripts/measure-v2-latency.py /src/scripts/serve-v2-latency-fixtures.py
+docker run --rm -v /Users/konstantin/repos/agents/opencode2-workspace/coding/exchange_api:/src semgrep/semgrep:latest semgrep scan --config auto /src
+docker run --rm -v /Users/konstantin/repos/agents/opencode2-workspace/coding/exchange_api:/src semgrep/semgrep:latest semgrep scan --config auto --no-git-ignore /src/scripts/measure-v2-latency.py /src/scripts/serve-v2-latency-fixtures.py
 ```
 
-**Trivy (2026-10-09)**: `exchange-api:v2-history-quote-api` had 0 High or Critical vulnerabilities with available fixes.
+**Trivy (2026-10-10)**: `exchange-api:v2-history-quote-api` had 0 High or Critical vulnerabilities with available fixes.
 
 ```sh
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed exchange-api:v2-history-quote-api
 ```
 
-**Rust validation (2026-10-09)**: `cargo test` passed all unit, integration, provider, API, persistence, and shutdown tests. `cargo fmt -- --check` passed.
+**Rust validation (2026-10-10)**: `cargo test` passed all unit, integration, provider, API, persistence, and shutdown tests. `cargo fmt -- --check` passed.

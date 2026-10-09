@@ -120,6 +120,8 @@ fn canonical_contract_has_all_six_routes_and_shared_envelope() {
         "/v1/spbex/{SYMBOL}/quote",
         "/v1/cbr/{SYMBOL}",
         "/v1/cbr/{SYMBOL}/quote",
+        "/v2/history/{PROVIDER}/{SYMBOL}",
+        "/v2/quote/{PROVIDER}/{SYMBOL}",
     ] {
         assert!(
             contract["paths"][path]["get"].is_mapping(),
@@ -132,9 +134,35 @@ fn canonical_contract_has_all_six_routes_and_shared_envelope() {
         "SpbexUpstreamUnavailable",
         "CbrUpstreamUnavailable",
         "HistoryStoreUnavailable",
+        "InvalidV2PathParameter",
+        "ProviderUnavailable",
     ] {
         assert!(contract["components"]["responses"][response].is_mapping());
     }
     assert!(contract["components"]["schemas"]["ErrorResponse"]["properties"]["error"]["properties"]["code"].is_mapping());
     assert!(contract["components"]["schemas"]["ErrorResponse"]["properties"]["error"]["properties"]["message"].is_mapping());
+    assert_eq!(
+        contract["paths"]["/v2/history/{PROVIDER}/{SYMBOL}"]["get"]["parameters"][0]["$ref"],
+        "#/components/parameters/Provider"
+    );
+    assert_eq!(
+        contract["components"]["parameters"]["Provider"]["schema"]["enum"],
+        serde_yaml::to_value(["moex", "spbex", "cbr"]).unwrap()
+    );
+    assert_eq!(
+        contract["components"]["responses"]["InvalidV2PathParameter"]["content"]["application/json"]
+            ["examples"]["invalidProvider"]["value"]["error"]["code"],
+        "invalid_provider"
+    );
+
+    let feature: Value = serde_yaml::from_str(include_str!(
+        "../specs/005-v2-history-quote-api/contracts/openapi-v2.yaml"
+    ))
+    .unwrap();
+    for path in [
+        "/v2/history/{PROVIDER}/{SYMBOL}",
+        "/v2/quote/{PROVIDER}/{SYMBOL}",
+    ] {
+        assert!(feature["paths"][path]["get"].is_mapping(), "missing {path}");
+    }
 }

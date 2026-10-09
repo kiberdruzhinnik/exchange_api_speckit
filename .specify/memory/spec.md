@@ -3,15 +3,18 @@
 > **Revision**: 2026-10-09 — Archived permanent history retention and scheduled refresh behavior; consolidated matching API and configuration requirements.
 > **Revision**: 2026-10-09 — Archived MOEX history and quote behavior, mappings, validation, and shutdown requirements; kept the indefinite date-keyed history model after resolving the legacy storage conflict in favor of the current plan.
 > **Revision**: 2026-10-09 — Archived CBR history and latest-official-rate behavior, XML source mapping, shared-provider contract, and configuration requirements; retained the established indefinite durable-history model.
+> **Revision**: 2026-10-10 — Archived provider-qualified v2 history and quote routes, retained v1 compatibility, and the cache-populated latency acceptance criterion.
 
 **Status:** Current system requirements, consolidated from the MOEX, SPBEX, and CBR feature specifications.  
-**Scope:** The six provider history and quote routes and shared service behavior.
+**Scope:** The six provider-specific v1 routes, six provider-qualified v2 routes, and shared service behavior.
 
 The archived feature task lists are fully checked, and their feature specs are sealed. The historical feature specs are preserved unchanged.
 
 ## Shared REST Contract
 
-- **SHARED-FR-001** *(MOEX FR-001, FR-003; SPBEX FR-001, FR-003, FR-007; CBR FR-020, FR-021)*: The API MUST expose `GET /v1/{provider}/{SYMBOL}` and `GET /v1/{provider}/{SYMBOL}/quote` for `moex`, `spbex`, and `cbr`. All success records MUST use exactly `date`, `close`, `high`, `low`, `volume`, and `facevalue` in JSON arrays. History responses MUST contain the complete retained history, including newly fetched records, ordered according to the provider contract. [Source: specs/004-history-cache-refresh/spec.md -> FR-006] [Source: specs/001-moex-ticker-update/spec.md -> FR-001, FR-003] [Source: specs/002-spbex-ticker-update/spec.md -> FR-001, FR-003, FR-007] [Source: specs/003-cbr-currency-rates/spec.md -> FR-020, FR-021]
+- **SHARED-FR-001** *(MOEX FR-001, FR-003; SPBEX FR-001, FR-003, FR-007; CBR FR-020, FR-021)*: The API MUST expose `GET /v1/{provider}/{SYMBOL}` and `GET /v1/{provider}/{SYMBOL}/quote` for `moex`, `spbex`, and `cbr`, and the additive `GET /v2/history/{PROVIDER}/{SYMBOL}` and `GET /v2/quote/{PROVIDER}/{SYMBOL}` routes for those same providers. All success records MUST use exactly `date`, `close`, `high`, `low`, `volume`, and `facevalue` in JSON arrays. History responses MUST contain the complete retained history, including newly fetched records, ordered according to the provider contract. [Source: specs/004-history-cache-refresh/spec.md -> FR-006] [Source: specs/001-moex-ticker-update/spec.md -> FR-001, FR-003] [Source: specs/002-spbex-ticker-update/spec.md -> FR-001, FR-003, FR-007] [Source: specs/003-cbr-currency-rates/spec.md -> FR-020, FR-021] [Source: specs/005-v2-history-quote-api/spec.md -> FR-001, FR-002, FR-004, FR-005]
+- **SHARED-FR-025**: V2 requests MUST use the provider path segment, exactly `moex`, `spbex`, or `cbr`, to select that provider's behavior; unsupported provider values MUST return HTTP 400 with the shared `invalid_provider` error envelope and MUST NOT fall through to another provider. [Source: specs/005-v2-history-quote-api/spec.md -> FR-003] [Source: specs/005-v2-history-quote-api/data-model.md -> Provider Selector]
+- **SHARED-FR-026**: Existing provider-specific v1 history and quote routes MUST remain available with their existing behavior alongside the v2 routes. [Source: specs/005-v2-history-quote-api/spec.md -> FR-007]
 - **SHARED-FR-002** *(MOEX FR-008; SPBEX FR-010; CBR FR-003, FR-012, FR-022)*: Providers MUST trim surrounding whitespace and uppercase symbols before validation. Malformed or unsupported symbols MUST return HTTP 400 with `{"error":{"code":"invalid_symbol","message":"..."}}`. SPBEX successful empty feeds MUST NOT be treated as unsupported symbols; an explicit upstream rejection may return HTTP 400. CBR symbols MUST be validated against its currently supported-currency directory. [Source: specs/001-moex-ticker-update/spec.md -> FR-008] [Source: specs/002-spbex-ticker-update/spec.md -> FR-010] [Source: specs/003-cbr-currency-rates/spec.md -> FR-003, FR-012]
 - **SHARED-FR-003** *(MOEX FR-009; SPBEX FR-011, FR-015; CBR FR-013, FR-015, FR-022, FR-024)*: Upstream failures or unusable upstream data MUST return HTTP 502 in the shared error envelope, retaining the existing route-specific codes `moex_unavailable`, `spbex_unavailable`, or `cbr_unavailable`. History-store failures MUST return HTTP 503 with `history_store_unavailable` in the same envelope. Failed user-request refreshes MUST NOT report stale cached data as a successful refresh. [Source: specs/004-history-cache-refresh/spec.md -> FR-008] [Source: specs/004-history-cache-refresh/spec.md -> FR-010] [Source: specs/001-moex-ticker-update/spec.md -> FR-009] [Source: specs/002-spbex-ticker-update/spec.md -> FR-011, FR-015] [Source: specs/003-cbr-currency-rates/spec.md -> FR-013, FR-015, FR-022, FR-024]
 - **SHARED-FR-004** *(MOEX FR-007; SPBEX FR-006, FR-009; CBR FR-008, FR-011)*: Successful empty history MUST return `[]`. A successful quote lookup with no quote MUST return HTTP 200 and a one-element array whose six fields are all `null`. [Source: specs/002-spbex-ticker-update/spec.md -> FR-006, FR-009] [Source: specs/003-cbr-currency-rates/spec.md -> FR-008, FR-011]
@@ -203,6 +206,37 @@ A client can distinguish invalid input from temporary source failures, and all p
 
 [Source: specs/003-cbr-currency-rates/spec.md -> "Handle unsupported currencies and source failures"]
 
+### User Story 8 - Fetch symbol history from v2 (Priority: P1)
+
+As an API client, I want to fetch a symbol's complete history from a versioned v2 route so that history access follows the new public URL structure.
+
+**Why this priority**: History is a primary service capability and the requested route migration.
+
+**Independent Test**: Request a supported provider-symbol pair through `GET /v2/history/{PROVIDER}/{SYMBOL}` and verify the response contains its complete history in the established record format.
+
+**Acceptance Scenarios**:
+1. **Given** a supported provider and symbol, **When** its v2 history route is requested, **Then** the service returns that provider-symbol pair's complete retained history using the established six-field record shape and ordering.
+2. **Given** an unsupported provider or malformed or unsupported symbol, **When** its v2 history route is requested, **Then** the service returns the established client error behavior.
+3. **Given** the source or history store fails, **When** the v2 history route is requested, **Then** the service returns the established upstream or store error behavior.
+4. **Given** a valid provider-symbol pair and the source successfully returns no history, **When** its v2 history route is requested, **Then** the service returns an empty array (`[]`).
+
+[Source: specs/005-v2-history-quote-api/spec.md -> "Fetch symbol history from v2"]
+
+### User Story 9 - Fetch the current quote from v2 (Priority: P1)
+
+As an API client, I want to fetch a symbol's current quote from a versioned v2 route so that quote access follows the new public URL structure.
+
+**Why this priority**: Clients need a direct current quote route alongside the new history route.
+
+**Independent Test**: Request a supported provider-symbol pair through `GET /v2/quote/{PROVIDER}/{SYMBOL}` and verify the response matches the existing current-quote format and freshness behavior.
+
+**Acceptance Scenarios**:
+1. **Given** a supported provider and symbol with current source data, **When** its v2 quote route is requested, **Then** the service returns that provider's current quote in the established one-record, six-field format.
+2. **Given** a valid provider-symbol pair with no quote data, **When** its v2 quote route is requested, **Then** the service returns the established no-quote result.
+3. **Given** the source is unavailable or returns unusable data, **When** its v2 quote route is requested, **Then** the service returns the established upstream error behavior.
+
+[Source: specs/005-v2-history-quote-api/spec.md -> "Fetch the current quote from v2"]
+
 ## Shared Freshness, Performance, and Operations
 
 - **SHARED-FR-006** *(MOEX FR-013; SPBEX FR-013; CBR FR-014)*: Unexpired history MUST survive application restarts. Expired history MUST be refreshed before it is returned; the specification does not prescribe a storage mechanism or freshness duration. [Source: specs/001-moex-ticker-update/spec.md -> FR-013] [Source: specs/002-spbex-ticker-update/spec.md -> FR-013] [Source: specs/003-cbr-currency-rates/spec.md -> FR-014]
@@ -227,6 +261,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 - **SHARED-FR-022**: The worker MUST retry network failures, timeouts, HTTP 408, 425, 429, 5xx, and invalid/incomplete data with exponential backoff starting at one second until a valid refresh succeeds; other HTTP 4xx responses are deferred until the next normal schedule, and retry delays MUST not exceed the configured cap. [Source: specs/004-history-cache-refresh/spec.md -> FR-015]
 - **SHARED-FR-023**: Operators MUST be able to configure a positive-integer retry cap in seconds using `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS`, defaulting to `900`; successful refreshes MUST reset that collection's retry state. [Source: specs/004-history-cache-refresh/spec.md -> FR-016]
 - **SHARED-FR-024**: The worker MUST validate the complete full-refresh result before atomically merging it. Failed pages, malformed or unusable records, invalid dates, and duplicate provider/symbol/date identities MUST preserve existing records and last-successful-refresh metadata. [Source: specs/004-history-cache-refresh/spec.md -> FR-017]
+- **SHARED-FR-027**: The provider selector is a path-level request entity that identifies exactly one existing provider; the symbol is normalized and validated by that selected provider. [Source: specs/005-v2-history-quote-api/data-model.md -> Provider-Symbol Request]
 
 ## Key Entities
 
@@ -262,8 +297,19 @@ Identifies a currency by its public three-letter code, normalized by trimming an
 
 Represents the latest official Bank of Russia rate fetched for a quote request. It is a one-element history-shaped response, carries the source's effective date and normalized RUB-per-unit rate, and is not read from or written to history storage. A successful lookup with no rate returns all six fields as null. [Source: specs/003-cbr-currency-rates/data-model.md -> Latest Quote]
 
+### Provider Selector
+
+Identifies one existing data adapter selected by a v2 request: `moex`, `spbex`, or `cbr`. Other values are rejected with HTTP 400 and `invalid_provider`. [Source: specs/005-v2-history-quote-api/data-model.md -> Provider Selector]
+
+### Provider-Symbol Request
+
+Represents the provider selected by the v2 path and the caller-supplied symbol. The selected existing provider normalizes and validates the symbol; the same symbol text at another provider is a separate request target. [Source: specs/005-v2-history-quote-api/data-model.md -> Provider-Symbol Request]
+
 ## Edge Cases
 
+- V2 provider values are limited to `moex`, `spbex`, and `cbr`; an unsupported value returns HTTP 400 with `invalid_provider` and never selects another provider. [Source: specs/005-v2-history-quote-api/spec.md -> Edge Cases]
+- The same symbol may be valid at multiple providers; the v2 provider segment alone selects the intended provider's history or quote. [Source: specs/005-v2-history-quote-api/spec.md -> Edge Cases]
+- Existing provider-specific v1 routes remain available during the v2 migration. [Source: specs/005-v2-history-quote-api/spec.md -> Edge Cases]
 - A failed source fetch during a user request returns the documented provider-specific upstream error; cached data is not reported as a successful refresh. SPBEX oversized, truncated, malformed, unsuccessful, or unusable responses are not treated as valid empty data. [Source: specs/004-history-cache-refresh/spec.md -> "If the source request fails"] [Source: specs/002-spbex-ticker-update/spec.md -> FR-011] [Source: specs/002-spbex-ticker-update/spec.md -> "The SPBEX response is too large, truncated, malformed, or unsuccessful"]
 - A history-store read or update failure returns the documented history-store error, including HTTP 503 for SPBEX history. [Source: specs/004-history-cache-refresh/spec.md -> "If the history store cannot be queried"] [Source: specs/002-spbex-ticker-update/spec.md -> FR-015]
 - Retryable background failures preserve last-good history and retry with configured backoff; other HTTP 4xx responses wait until the next normal schedule. [Source: specs/004-history-cache-refresh/spec.md -> "If a background full refresh receives a network failure"]
@@ -304,6 +350,7 @@ Represents the latest official Bank of Russia rate fetched for a quote request. 
 - **SHARED-SC-017**: MOEX, SPBEX, and CBR expose the same documented history and quote response structure, symbol handling, and error outcomes while preserving provider-specific quote meanings. [Source: specs/003-cbr-currency-rates/spec.md -> SC-009]
 - **SHARED-SC-018**: Shared runtime settings affect every provider consistently and provider-specific source settings remain independently configurable. [Source: specs/003-cbr-currency-rates/spec.md -> SC-010]
 - **SHARED-SC-019**: Every documented and accepted application configuration environment variable begins with `EXCHANGE_API_`, including provider-specific settings. [Source: specs/003-cbr-currency-rates/spec.md -> SC-011]
+- **SHARED-SC-020**: Each of the six v2 provider history and quote routes meets the requirement that at least 95% of successful responses finish in under one second at 10 total requests per second with 10 concurrent clients. MOEX history's initial uncached full fetch is reported separately; its gated profile runs after full history is cached. [Source: specs/005-v2-history-quote-api/spec.md -> SC-005]
 
 ## Assumptions
 
@@ -331,6 +378,9 @@ Represents the latest official Bank of Russia rate fetched for a quote request. 
 - **AS-022**: CBR currency support is determined from its current public supported-currency list, not a hard-coded list. [Source: specs/003-cbr-currency-rates/spec.md -> "Currency support is determined"]
 - **AS-023**: Providers share record and route behavior while retaining distinct quote meanings: MOEX trade, SPBEX daily candle, and CBR official rate. [Source: specs/003-cbr-currency-rates/spec.md -> "Shared route behavior follows"]
 - **AS-024**: Application configuration uses `EXCHANGE_API_`-prefixed environment variables, including provider-specific settings. [Source: specs/003-cbr-currency-rates/spec.md -> "All application configuration is supplied"]
+- **AS-025**: V2 changes route organization only; provider mappings, history lifecycle, response records, and error contracts remain unchanged. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
+- **AS-026**: Provider-specific v1 routes remain available during the v2 migration to preserve compatibility. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
+- **AS-027**: V2 route templates are `/v2/history/{PROVIDER}/{SYMBOL}` and `/v2/quote/{PROVIDER}/{SYMBOL}`; braces mark path parameters. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
 
 ## Implementation Comparison and Open Contradictions
 

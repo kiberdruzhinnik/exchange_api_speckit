@@ -84,15 +84,15 @@ async fn history_returns_normalized_sorted_six_field_records_and_reuses_cache() 
     history_mock().expect(1).mount(&server).await;
     let app = source(&server, None, Duration::from_secs(30));
 
-    for symbol in ["usd", "USD"] {
+    for (index, symbol) in ["usd", "USD"].into_iter().enumerate() {
+        let route = if index == 0 {
+            format!("/v2/history/cbr/{symbol}")
+        } else {
+            format!("/v1/cbr/{symbol}")
+        };
         let response = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/v1/cbr/{symbol}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -216,15 +216,10 @@ async fn quote_fetches_latest_rate_on_every_request_and_returns_shared_shape() {
         .mount(&server)
         .await;
     let app = source(&server, None, Duration::from_secs(30));
-    for _ in 0..2 {
+    for route in ["/v2/quote/cbr/USD", "/v1/cbr/USD/quote"] {
         let response = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/cbr/USD/quote")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);

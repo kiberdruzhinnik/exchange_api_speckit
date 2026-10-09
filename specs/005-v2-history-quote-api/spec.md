@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-09
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "move history fetch to /v2/history/<SYMBOL> and current quote to /v2/quote/<SYMBOL>"; clarified to include `<PROVIDER>` in each path and keep existing v1 routes.
 

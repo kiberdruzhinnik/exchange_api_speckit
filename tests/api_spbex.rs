@@ -41,15 +41,15 @@ async fn history_returns_six_fields_sorted_and_uses_history_cache() {
     let server = MockServer::start().await;
     chart(HISTORY).expect(1).mount(&server).await;
     let app = app(&server, Duration::from_secs(30));
-    for symbol in ["sber", "SBER"] {
+    for (index, symbol) in ["sber", "SBER"].into_iter().enumerate() {
+        let route = if index == 0 {
+            format!("/v2/history/spbex/{symbol}")
+        } else {
+            format!("/v1/spbex/{symbol}")
+        };
         let response = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/v1/spbex/{symbol}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -158,15 +158,10 @@ async fn quote_reaches_upstream_on_every_request_and_returns_latest_candle_shape
     let server = MockServer::start().await;
     chart(HISTORY).expect(2).mount(&server).await;
     let app = app(&server, Duration::from_secs(30));
-    for _ in 0..2 {
+    for route in ["/v2/quote/spbex/SBER", "/v1/spbex/SBER/quote"] {
         let response = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/spbex/SBER/quote")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -364,13 +359,13 @@ async fn history_store_read_and_write_failures_return_503() {
             1024 * 1024,
             store,
         ));
+        let route = if fail_write {
+            "/v2/history/spbex/SBER"
+        } else {
+            "/v1/spbex/SBER"
+        };
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/spbex/SBER")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);

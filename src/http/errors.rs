@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
+    #[error("provider is unsupported")]
+    InvalidProvider,
     #[error("symbol is malformed or unsupported")]
     InvalidSymbol,
     #[error("MOEX market data is temporarily unavailable")]
@@ -42,6 +44,11 @@ struct ErrorDetail {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let (status, code, message) = match self {
+            Self::InvalidProvider => (
+                StatusCode::BAD_REQUEST,
+                "invalid_provider",
+                "Provider is unsupported".to_owned(),
+            ),
             Self::InvalidSymbol => (
                 StatusCode::BAD_REQUEST,
                 "invalid_symbol",

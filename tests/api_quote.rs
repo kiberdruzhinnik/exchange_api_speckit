@@ -29,15 +29,14 @@ async fn quote_app(trades: &'static str) -> (MockServer, axum::Router) {
 #[tokio::test]
 async fn returns_latest_trade_as_one_history_shaped_record_and_fetches_each_time() {
     let (server, app) = quote_app(include_str!("fixtures/moex/trades-latest.json")).await;
-    for _ in 0..2 {
+    for route in [
+        "/v2/quote/moex/SBER",
+        "/v2/quote/moex/SBER",
+        "/v1/moex/SBER/quote",
+    ] {
         let response = app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/moex/SBER/quote")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -53,7 +52,29 @@ async fn returns_latest_trade_as_one_history_shaped_record_and_fetches_each_time
         assert!(value[0]["low"].is_null());
         assert!(value[0]["facevalue"].is_null());
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn rejects_unknown_v2_quote_provider_without_fetching() {
+    let server = MockServer::start().await;
+    let client = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(2)).unwrap();
+    let response = router(AppState::new(client))
+        .oneshot(
+            Request::builder()
+                .uri("/v2/quote/unknown/SBER")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["error"]["code"], "invalid_provider");
+    assert!(server.received_requests().await.unwrap().is_empty());
 }
 
 #[tokio::test]

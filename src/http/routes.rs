@@ -7,8 +7,20 @@ use axum::{
     routing::get,
 };
 use serde::Serialize;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use tower_http::trace::TraceLayer;
+
+fn select_provider(
+    providers: &crate::Providers,
+    provider: &str,
+) -> Result<(Arc<dyn crate::provider::ExchangeProvider>, &'static str), ApiError> {
+    match provider {
+        "moex" => Ok((providers.moex.clone(), "MOEX")),
+        "spbex" => Ok((providers.spbex.clone(), "SPBEX")),
+        "cbr" => Ok((providers.cbr.clone(), "CBR")),
+        _ => Err(ApiError::InvalidProvider),
+    }
+}
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -65,6 +77,14 @@ async fn cbr_history(
         false,
     )
     .await
+}
+
+async fn v2_history(
+    State(state): State<AppState>,
+    Path((provider, symbol)): Path<(String, String)>,
+) -> Result<Response<Body>, ApiError> {
+    let (provider, namespace) = select_provider(&state.providers, &provider)?;
+    serve_history(state, provider, symbol, namespace, false).await
 }
 
 async fn serve_history(
@@ -206,6 +226,14 @@ async fn serve_quote(
     Ok(Json(vec![quote]))
 }
 
+async fn v2_quote(
+    State(state): State<AppState>,
+    Path((provider, symbol)): Path<(String, String)>,
+) -> Result<Json<Vec<crate::domain::LatestQuoteRecord>>, ApiError> {
+    let (provider, _) = select_provider(&state.providers, &provider)?;
+    serve_quote(provider, symbol).await
+}
+
 fn map_history_provider_error(
     code: &'static str,
     error: crate::provider::ProviderError,
@@ -253,6 +281,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/spbex/{symbol}/quote", get(spbex_quote))
         .route("/v1/cbr/{symbol}", get(cbr_history))
         .route("/v1/cbr/{symbol}/quote", get(cbr_quote))
+        .route("/v2/history/{provider}/{symbol}", get(v2_history))
+        .route("/v2/quote/{provider}/{symbol}", get(v2_quote))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

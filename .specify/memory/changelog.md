@@ -2,6 +2,20 @@
 
 ## Merged Features Log
 
+### V2 History and Quote Routes — archived 2026-10-10
+**Branch:** 005-v2-history-quote-api
+**Spec:** [specs/005-v2-history-quote-api/spec.md](../../specs/005-v2-history-quote-api/spec.md)
+
+**What was added:**
+- Provider-qualified v2 history and quote routes for MOEX, SPBEX, and CBR, with provider-specific dispatch and established response and error behavior.
+- Continued availability of all provider-specific v1 routes during migration.
+- Six separate v2 performance profiles; the initial uncached MOEX full fetch is reported separately and the one-second gate applies after history is fully cached.
+
+**New Components:**
+- None; routes extend the existing HTTP router and canonical OpenAPI contract.
+
+**Tasks Completed:** 12/12 tasks
+
 ### CBR Currency Rates API — archived 2026-10-09
 **Branch:** 003-cbr-currency-rates
 **Spec:** [specs/003-cbr-currency-rates/spec.md](../../specs/003-cbr-currency-rates/spec.md)

@@ -56,7 +56,7 @@ async fn returns_six_field_array() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -97,7 +97,7 @@ async fn returns_empty_array_when_no_history() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -111,6 +111,48 @@ async fn returns_empty_array_when_no_history() {
         serde_json::from_slice::<Value>(&bytes).unwrap(),
         serde_json::json!([])
     );
+}
+
+#[tokio::test]
+async fn rejects_unknown_v2_provider_with_actionable_error_without_fetching() {
+    let (server, app) = app_with_history(include_str!("fixtures/moex/history-page.json")).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v2/history/unknown/SBER")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["error"]["code"], "invalid_provider");
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn rejects_malformed_symbol_on_v2_history_route() {
+    let (server, app) = app_with_history(include_str!("fixtures/moex/history-page.json")).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v2/history/moex/bad%20ticker")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["error"]["code"], "invalid_symbol");
+    assert!(server.received_requests().await.unwrap().is_empty());
 }
 
 #[tokio::test]

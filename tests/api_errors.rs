@@ -71,7 +71,7 @@ async fn maps_upstream_failure_to_bad_gateway() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )

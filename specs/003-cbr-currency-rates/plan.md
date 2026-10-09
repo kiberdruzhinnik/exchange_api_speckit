@@ -44,8 +44,19 @@ Use one application-wide namespace for shared settings and remove the old names 
 | History cache capacity | `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` | `67108864` |
 | History database path | `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` |
 
-Use only the canonical `EXCHANGE_API_*` names for shared settings and do not support aliases. Keep provider-specific upstream URL and response-size variables provider-prefixed (`MOEX_ISS_BASE_URL`, `MOEX_MAX_ISS_RESPONSE_BYTES`, `MOEX_MAX_HISTORY_BYTES`, `SPBEX_API_BASE_URL`, `SPBEX_MAX_RESPONSE_BYTES`, `CBR_API_BASE_URL`, and `CBR_MAX_RESPONSE_BYTES`).
-Update all provider quickstarts and the root `docker-compose.yml` example to use only the canonical shared setting names; remove legacy names from documentation and runtime configuration without aliases. Keep provider-specific upstream URL and response-limit variables provider-prefixed.
+All application configuration environment variables use the `EXCHANGE_API_` prefix; do not support aliases. Provider-specific values remain independently configurable inside this namespace:
+
+| Setting | Canonical environment variable | Default |
+|---|---|---|
+| MOEX ISS base URL | `EXCHANGE_API_MOEX_ISS_BASE_URL` | `https://iss.moex.com/iss/` |
+| MOEX maximum ISS response bytes | `EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES` | `4194304` |
+| MOEX maximum accumulated history bytes | `EXCHANGE_API_MOEX_MAX_HISTORY_BYTES` | `67108864` |
+| SPBEX API base URL | `EXCHANGE_API_SPBEX_API_BASE_URL` | `https://spbexchange.ru/api/` |
+| SPBEX maximum response bytes | `EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES` | `16777216` |
+| CBR API base URL | `EXCHANGE_API_CBR_API_BASE_URL` | `https://www.cbr.ru/` |
+| CBR maximum response bytes | `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES` | `16777216` |
+
+The application MUST read only these canonical names and MUST NOT accept provider-only or unprefixed aliases. Update `src/config.rs`, its configuration tests, measurement scripts, `docker-compose.yml`, and all provider setup documentation so every application configuration variable follows this rule. Historical benchmark records remain valid evidence for the settings and binaries used at the time; future runs use the canonical names.
 
 ## Constitution Check
 
@@ -58,7 +69,7 @@ Update all provider quickstarts and the root `docker-compose.yml` example to use
 
 **Gate**: PASS. The specification and CBR source research resolve functional decisions needed to design the feature.
 
-**Post-Design Gate**: PASS. The design specifies versioned route contracts, official supported-currency lookup, explicit rate normalization and missing-field behavior, one provider interface and canonical shared contract, canonical shared settings, preserved `/v1` error-code compatibility, CBR-specific latest-rate quote mapping, and the hard p95 gate across all six provider routes. It reuses the existing bounded SIGINT shutdown and container architecture, with successful Linux amd64 image build as the amd64 acceptance criterion.
+**Post-Design Gate**: PASS. The design specifies versioned route contracts, official supported-currency lookup, explicit rate normalization and missing-field behavior, one provider interface and canonical shared contract, canonical `EXCHANGE_API_*` names for every application setting with no aliases, preserved `/v1` error-code compatibility, CBR-specific latest-rate quote mapping, and the hard p95 gate across all six provider routes. It reuses the existing bounded SIGINT shutdown and container architecture, with successful Linux amd64 image build as the amd64 acceptance criterion.
 
 ## Project Structure
 
@@ -79,7 +90,7 @@ specs/contracts/openapi.yaml    # canonical contract and common schemas for all 
 
 ```text
 src/
-├── config.rs                # CBR base URL and response-size configuration
+├── config.rs                # shared and EXCHANGE_API_-prefixed provider configuration
 ├── domain.rs                # shared six-field public response types, including LatestQuoteRecord
 ├── provider.rs              # shared async provider interface and provider errors
 ├── lib.rs                   # application state with CBR client
@@ -111,7 +122,7 @@ tests/
     └── malformed.xml
 ```
 
-**Structure Decision**: Keep one deployable Rust service and add `src/cbr/` alongside the existing exchange adapters. Consolidate shared provider abstraction, neutral `DailyMarketRecord`/`LatestQuoteRecord`, route/error orchestration, configuration, cache behavior, and router conventions; retain adapters for MOEX, SPBEX, and CBR source behavior. Put the canonical shared OpenAPI components and all provider paths in `specs/contracts/openapi.yaml`, with feature contracts referring to it. Prefix persistent history keys with `CBR:` to prevent collisions with identical symbols on other exchanges. Quotes bypass both rate-history cache layers.
+**Structure Decision**: Keep one deployable Rust service and add `src/cbr/` alongside the existing exchange adapters. Consolidate shared provider abstraction, neutral `DailyMarketRecord`/`LatestQuoteRecord`, route/error orchestration, configuration, cache behavior, and router conventions; retain adapters for MOEX, SPBEX, and CBR source behavior. Put the canonical shared OpenAPI components and all provider paths in `specs/contracts/openapi.yaml`, with feature contracts referring to it. Prefix persistent history keys with `CBR:` to prevent collisions with identical symbols on other exchanges. Quotes bypass both rate-history cache layers. All application configuration names, including source URL and response-size controls, begin with `EXCHANGE_API_`.
 
 ## Complexity Tracking
 

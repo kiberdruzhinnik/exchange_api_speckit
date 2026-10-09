@@ -1,10 +1,11 @@
 <!--
 Sync Impact Report
-Version change: 1.0.0 → 1.1.0
-Modified principles: V. Practical Quality and Operability (expanded with final-build Semgrep and Trivy gates)
+Version change: 1.1.0 → 1.1.1
+Modified principles: none
+Metadata updated: ratification date confirmed
 Added sections: none
 Removed sections: none
-Follow-up TODOs: confirm original ratification date
+Follow-up TODOs: none
 -->
 # exchange_api Constitution
 
@@ -78,4 +79,4 @@ rationale. Exceptions MUST identify the affected service or API and any follow-u
 compliance. Implementation plans and reviews MUST verify that API documentation, compatibility,
 service ownership, and operational guidance are addressed where relevant.
 
-**Version**: 1.1.0 | **Ratified**: TODO(RATIFICATION_DATE): confirm original adoption date | **Last Amended**: 2026-10-08
+**Version**: 1.1.1 | **Ratified**: 2026-10-09 | **Last Amended**: 2026-10-09

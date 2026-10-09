@@ -45,43 +45,45 @@ impl AppConfig {
             return Err("EXCHANGE_API_REQUEST_TIMEOUT_SECS must be greater than zero".to_owned());
         }
 
-        let moex_iss_base_url = get("MOEX_ISS_BASE_URL")
+        let moex_iss_base_url = get("EXCHANGE_API_MOEX_ISS_BASE_URL")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| "https://iss.moex.com/iss/".to_owned());
 
-        let spbex_api_base_url = get("SPBEX_API_BASE_URL")
+        let spbex_api_base_url = get("EXCHANGE_API_SPBEX_API_BASE_URL")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| "https://spbexchange.ru/api/".to_owned());
 
-        let cbr_api_base_url = get("CBR_API_BASE_URL")
+        let cbr_api_base_url = get("EXCHANGE_API_CBR_API_BASE_URL")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| "https://www.cbr.ru/".to_owned());
 
-        let cbr_max_response_bytes = get("CBR_MAX_RESPONSE_BYTES")
+        let cbr_max_response_bytes = get("EXCHANGE_API_CBR_MAX_RESPONSE_BYTES")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| (16 * 1024 * 1024usize).to_string())
             .parse::<usize>()
             .map_err(|error| {
-                format!("CBR_MAX_RESPONSE_BYTES must be a positive integer: {error}")
+                format!("EXCHANGE_API_CBR_MAX_RESPONSE_BYTES must be a positive integer: {error}")
             })?;
         if cbr_max_response_bytes == 0 {
-            return Err("CBR_MAX_RESPONSE_BYTES must be greater than zero".to_owned());
+            return Err("EXCHANGE_API_CBR_MAX_RESPONSE_BYTES must be greater than zero".to_owned());
         }
 
-        let spbex_max_response_bytes = get("SPBEX_MAX_RESPONSE_BYTES")
+        let spbex_max_response_bytes = get("EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| (16 * 1024 * 1024usize).to_string())
             .parse::<usize>()
             .map_err(|error| {
-                format!("SPBEX_MAX_RESPONSE_BYTES must be a positive integer: {error}")
+                format!("EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES must be a positive integer: {error}")
             })?;
         if spbex_max_response_bytes == 0 {
-            return Err("SPBEX_MAX_RESPONSE_BYTES must be greater than zero".to_owned());
+            return Err(
+                "EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES must be greater than zero".to_owned(),
+            );
         }
 
         let cache_ttl_seconds = get("EXCHANGE_API_HISTORY_CACHE_TTL_SECS")
@@ -110,28 +112,32 @@ impl AppConfig {
             );
         }
 
-        let moex_max_response_bytes = get("MOEX_MAX_ISS_RESPONSE_BYTES")
+        let moex_max_response_bytes = get("EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| (4 * 1024 * 1024usize).to_string())
             .parse::<usize>()
             .map_err(|error| {
-                format!("MOEX_MAX_ISS_RESPONSE_BYTES must be a positive integer: {error}")
+                format!(
+                    "EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES must be a positive integer: {error}"
+                )
             })?;
         if moex_max_response_bytes == 0 {
-            return Err("MOEX_MAX_ISS_RESPONSE_BYTES must be greater than zero".to_owned());
+            return Err(
+                "EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES must be greater than zero".to_owned(),
+            );
         }
 
-        let moex_max_history_bytes = get("MOEX_MAX_HISTORY_BYTES")
+        let moex_max_history_bytes = get("EXCHANGE_API_MOEX_MAX_HISTORY_BYTES")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
             .unwrap_or_else(|_| (64 * 1024 * 1024usize).to_string())
             .parse::<usize>()
             .map_err(|error| {
-                format!("MOEX_MAX_HISTORY_BYTES must be a positive integer: {error}")
+                format!("EXCHANGE_API_MOEX_MAX_HISTORY_BYTES must be a positive integer: {error}")
             })?;
         if moex_max_history_bytes == 0 {
-            return Err("MOEX_MAX_HISTORY_BYTES must be greater than zero".to_owned());
+            return Err("EXCHANGE_API_MOEX_MAX_HISTORY_BYTES must be greater than zero".to_owned());
         }
 
         let history_cache_db_path = get("EXCHANGE_API_HISTORY_CACHE_DB_PATH")
@@ -184,13 +190,23 @@ mod tests {
             ("EXCHANGE_API_HISTORY_CACHE_TTL_SECS", "9"),
             ("EXCHANGE_API_HISTORY_CACHE_MAX_BYTES", "1234"),
             ("EXCHANGE_API_HISTORY_CACHE_DB_PATH", "/tmp/cache.sqlite"),
-            ("MOEX_ISS_BASE_URL", "https://iss.example/"),
-            ("SPBEX_API_BASE_URL", "https://spb.example/api/"),
-            ("CBR_API_BASE_URL", "https://cbr.example/"),
-            ("MOEX_MAX_ISS_RESPONSE_BYTES", "2048"),
-            ("MOEX_MAX_HISTORY_BYTES", "4096"),
-            ("SPBEX_MAX_RESPONSE_BYTES", "8192"),
-            ("CBR_MAX_RESPONSE_BYTES", "16384"),
+            ("EXCHANGE_API_MOEX_ISS_BASE_URL", "https://iss.example/"),
+            (
+                "EXCHANGE_API_SPBEX_API_BASE_URL",
+                "https://spb.example/api/",
+            ),
+            ("EXCHANGE_API_CBR_API_BASE_URL", "https://cbr.example/"),
+            ("EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES", "2048"),
+            ("EXCHANGE_API_MOEX_MAX_HISTORY_BYTES", "4096"),
+            ("EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES", "8192"),
+            ("EXCHANGE_API_CBR_MAX_RESPONSE_BYTES", "16384"),
+            ("MOEX_ISS_BASE_URL", "https://legacy-iss.example/"),
+            ("SPBEX_API_BASE_URL", "https://legacy-spb.example/api/"),
+            ("CBR_API_BASE_URL", "https://legacy-cbr.example/"),
+            ("MOEX_MAX_ISS_RESPONSE_BYTES", "17"),
+            ("MOEX_MAX_HISTORY_BYTES", "18"),
+            ("SPBEX_MAX_RESPONSE_BYTES", "19"),
+            ("CBR_MAX_RESPONSE_BYTES", "20"),
             ("LISTEN_ADDR", "127.0.0.1:1111"),
             ("MOEX_REQUEST_TIMEOUT_SECS", "1"),
             ("MOEX_HISTORY_CACHE_TTL_SECS", "1"),

@@ -10,8 +10,8 @@ Use this guide to validate the Bank of Russia history and quote routes after imp
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CBR_API_BASE_URL` | `https://www.cbr.ru/` | Bank of Russia XML service base URL; override for fixture/mock tests. |
-| `CBR_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one CBR XML response. |
+| `EXCHANGE_API_CBR_API_BASE_URL` | `https://www.cbr.ru/` | Bank of Russia XML service base URL; override for fixture/mock tests. |
+| `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one CBR XML response. |
 | Currency directory freshness | 60 seconds | In-process supported-currency list refresh interval; quote rate values are never cached. |
 | `EXCHANGE_API_LISTEN_ADDR` | `0.0.0.0:8080` | Shared service listen address. |
 | `EXCHANGE_API_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout. |
@@ -81,3 +81,7 @@ Recorded final checks on 2026-10-09: `docker buildx build --platform linux/amd64
 On 2026-10-09, the final shared-handler binary was measured against production CBR using USD and 10 concurrent clients at 10 total requests per second. The cache lifecycle probe verified one cold upstream fetch, a warm memory hit, and one fetch after the 60-second expiry. Each 55-second timed profile scheduled and issued all 550 requests with zero skips and zero upstream errors. History-only p95 was 0.003090 s, quote-only p95 was 0.042939 s, and combined overall p95 was 0.033285 s (history 0.005350 s, quote 0.039645 s).
 
 Final cross-provider scans on 2026-10-09: the Linux amd64 distroless image built successfully. Semgrep `auto` scanned all 30 Rust source and test files plus the Python/Bash measurement scripts and Dockerfile with zero findings. Trivy scanned the built amd64 image archive (Debian 13.7, 14 OS packages) for High/Critical vulnerabilities with fixes available and found zero findings.
+
+## EXCHANGE_API configuration namespace update
+
+Validation on 2026-10-09 confirmed that all shared and provider-specific application settings use the `EXCHANGE_API_*` prefix, with prior provider-only names ignored. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (81 tests), and `cargo test --test shutdown` (3 tests) passed. All three measurement shell wrappers passed `bash -n`, their Python harnesses passed `py_compile`, and an audit found no provider-only environment lookups in runtime configuration or measurement wrappers. The Linux amd64 image built successfully with `docker build --platform linux/amd64 -t exchange-api:config-prefix .`. Semgrep `auto` scanned 42 files and reported 0 findings. Trivy scanned the built Debian 13.7 image (14 OS packages) for High and Critical vulnerabilities with fixes available and reported 0 findings.

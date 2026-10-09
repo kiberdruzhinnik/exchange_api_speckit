@@ -20,13 +20,13 @@
 
 **Purpose**: Build shared source, configuration, validation, and error handling required by all CBR routes.
 
-- [X] T002 [P] Add `CBR_API_BASE_URL` (default `https://www.cbr.ru/`) and positive `CBR_MAX_RESPONSE_BYTES` configuration fields in `src/config.rs`.
+- [X] T002 [P] Configure `EXCHANGE_API_CBR_API_BASE_URL` (default `https://www.cbr.ru/`) and positive `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES` fields in `src/config.rs`.
 - [X] T003 [P] Define CBR directory and rate XML models in `src/cbr/models.rs` and declare the CBR module in `src/cbr/mod.rs` and `src/lib.rs`.
 - [X] T004 [P] Implement trimmed, uppercase, three-letter ISO symbol normalization and directory matching in `src/cbr/validation.rs`.
-- [X] T005 Implement the bounded Rustls CBR XML client in `src/cbr/client.rs` to cache the supported-currency directory for 60 seconds, then refresh it; fetch history from the earliest source-available date through the latest published date and fetch the latest rate on demand; enforce `CBR_MAX_RESPONSE_BYTES` while reading bodies and retain normal TLS certificate and hostname verification.
+- [X] T005 Implement the bounded Rustls CBR XML client in `src/cbr/client.rs` to cache the supported-currency directory for 60 seconds, then refresh it; fetch history from the earliest source-available date through the latest published date and fetch the latest rate on demand; enforce the configured `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES` limit while reading bodies and retain normal TLS certificate and hostname verification.
 - [X] T006 Add the CBR client to application state and construct it from configuration in `src/lib.rs` and `src/main.rs`.
 - [X] T007 Add a CBR-specific upstream error variant and map CBR dependency failures to HTTP 502 with the standard `cbr_unavailable` JSON error in `src/http/errors.rs`.
-- [X] T008 Add CBR XML fixtures for currency directory, non-unit nominal history/latest rate, empty results, and malformed source documents under `tests/fixtures/cbr/`.
+- [X] T008 Add CBR XML fixtures for currency directory, non-unit nominal history/latest rate, empty results, and malformed source documents in `tests/fixtures/cbr/currencies.xml`, `tests/fixtures/cbr/history.xml`, `tests/fixtures/cbr/latest.xml`, `tests/fixtures/cbr/empty.xml`, and `tests/fixtures/cbr/malformed.xml`.
 
 **Checkpoint**: Shared CBR client and source parsing are ready for independent history and quote route work.
 
@@ -102,7 +102,7 @@
 - [X] T024 [P] Add OpenAPI contract schema coverage for both CBR paths and six required response fields in `tests/api_contract_schema.rs`.
 - [X] T025 Add a fixed-arrival production CBR latency harness in `scripts/measure-cbr-latency.py` and `scripts/measure-cbr-latency.sh` that reports issued/skipped/error counts, actual request rate, and successful-response p95 by route for history-only, quote-only, and combined profiles.
 - [X] T026 Run the production latency acceptance using the optimized local binary and CBR source with 10 concurrent clients and 10 total requests per second; record valid results and optimize/repeat until every profile has successful-response p95 under one second in `specs/003-cbr-currency-rates/quickstart.md`.
-- [X] T027 Build the container for `linux/amd64` using `Dockerfile` and verify the build succeeds; retain the existing `linux/arm64` build/runtime configuration without adding amd64 runtime tests.
+- [X] T027 Build the container for `linux/amd64` using `Dockerfile` and verify the build succeeds; retain the existing `linux/arm64` build/runtime configuration in `Dockerfile` and `docker-compose.yml` without adding amd64 runtime tests.
 - [X] T028 Run Semgrep on the final source and resolve every finding; record results in `specs/003-cbr-currency-rates/quickstart.md`.
 - [X] T029 Run Trivy against the final built deliverable, resolve all fixable High and Critical findings, and record results or unavailable fixes in `specs/003-cbr-currency-rates/quickstart.md`.
 - [X] T030 Run the `quickstart.md` local validation scenarios and record any checks that cannot run in the development environment in `specs/003-cbr-currency-rates/quickstart.md`.
@@ -180,7 +180,7 @@
 ### Tests for User Story 3
 
 - [X] T035 [P] [US3] Add provider-interface contract tests in `tests/provider_contract.rs` covering normalized history and quote return types, common invalid-symbol/upstream categories, each provider's existing upstream code, and retained MOEX trade, SPBEX candle, and CBR official-rate quote meanings.
-- [X] T036 [P] [US3] Add shared configuration tests in `src/config.rs` covering the five canonical `EXCHANGE_API_*` defaults and overrides, provider-specific URL/size settings, and rejection/absence of compatibility aliases for `LISTEN_ADDR` and old shared `MOEX_*` settings.
+- [X] T036 [US3] Update configuration tests in `src/config.rs` to cover defaults and overrides for every shared and provider-specific `EXCHANGE_API_*` setting, and confirm provider-only and unprefixed legacy names are ignored.
 - [X] T037 [P] [US3] Update API error tests in `tests/api_errors.rs`, `tests/api_cbr.rs`, and `tests/api_spbex.rs` to assert common HTTP status/envelope behavior, shared `invalid_symbol` and `history_store_unavailable` codes, and the existing provider-specific 502 codes (`moex_unavailable`, `spbex_unavailable`, `cbr_unavailable`).
 - [X] T038 [P] [US3] Extend `tests/api_contract_schema.rs` to resolve each feature contract's external path references and validate all six canonical routes, shared record schemas, nullable values, error envelope, and provider-specific upstream code examples.
 
@@ -194,22 +194,22 @@
 - [X] T044 [US3] Store the three provider implementations through one shared provider abstraction in `src/lib.rs` and construct them from `AppConfig` in `src/main.rs` without changing provider-specific source settings.
 - [X] T045 [US3] Refactor `src/http/routes.rs` to use shared history and quote orchestration for all providers, trim and uppercase every path symbol before provider validation, and preserve provider-specific quote meanings and exchange-qualified history keys.
 - [X] T046 [US3] Unify HTTP status and error-envelope mapping in `src/http/errors.rs` while preserving `moex_unavailable`, `spbex_unavailable`, and `cbr_unavailable` for their existing `/v1` routes and sharing `invalid_symbol` and `history_store_unavailable` codes.
-- [X] T047 [US3] Read the shared listener, timeout, history-cache TTL, capacity, and database path from `EXCHANGE_API_LISTEN_ADDR`, `EXCHANGE_API_REQUEST_TIMEOUT_SECS`, `EXCHANGE_API_HISTORY_CACHE_TTL_SECS`, `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES`, and `EXCHANGE_API_HISTORY_CACHE_DB_PATH` in `src/config.rs`; remove legacy-name lookups and keep source URL/response-limit variables provider-prefixed.
+- [X] T047 [US3] Read all shared and provider-specific settings only from their canonical `EXCHANGE_API_*` names in `src/config.rs`; remove lookups for provider-only or unprefixed aliases.
 - [X] T048 [US3] Change process setup in `tests/shutdown.rs` and the root `docker-compose.yml` example to use the canonical listener and cache environment names.
 
 ### Contract and documentation for User Story 3
 
 - [X] T049 [US3] Create `specs/contracts/openapi.yaml` as the canonical OpenAPI contract with all six provider routes, shared history/quote/error schemas, and provider-specific quote descriptions.
 - [X] T050 [US3] Update `specs/001-moex-ticker-update/contracts/openapi.yaml`, `specs/002-spbex-ticker-update/contracts/openapi.yaml`, and `specs/003-cbr-currency-rates/contracts/openapi.yaml` to reference canonical route/schema definitions and document the shared envelope/statuses with preserved provider-specific upstream codes.
-- [X] T051 [US3] Replace remaining legacy shared environment names and document the canonical names in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, `specs/003-cbr-currency-rates/quickstart.md`, `specs/001-moex-ticker-update/plan.md`, `specs/002-spbex-ticker-update/plan.md`, `specs/003-cbr-currency-rates/plan.md`, `specs/001-moex-ticker-update/research.md`, `specs/002-spbex-ticker-update/research.md`, `specs/003-cbr-currency-rates/research.md`, and `docker-compose.yml`; retain provider-prefixed source URL and response-limit names.
+- [X] T051 [US3] Document only `EXCHANGE_API_*` application configuration names in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, `specs/003-cbr-currency-rates/quickstart.md`, the three provider plans and research documents, and `docker-compose.yml`, including provider-specific source URLs and response-size limits.
 - [X] T052 [US3] Align `specs/003-cbr-currency-rates/plan.md`, `specs/003-cbr-currency-rates/research.md`, and `specs/003-cbr-currency-rates/quickstart.md` with the planned common interface, neutral quote record, preserved provider error codes, canonical settings, and provider-specific quote meanings.
 
 ### Cross-provider acceptance for User Story 3
 
-- [X] T053 [US3] Run fixture-backed and API contract suites for MOEX, SPBEX, and CBR, including symbol normalization, empty history, absent quote, upstream failure, and history-store failure cases; resolve regressions in the affected `src/` and `tests/` files.
+- [X] T053 [US3] Run fixture-backed and API contract suites for MOEX, SPBEX, and CBR, including symbol normalization, empty history, absent quote, upstream failure, and history-store failure cases in `tests/provider_contract.rs`, `tests/api_errors.rs`, `tests/api_cbr.rs`, `tests/api_spbex.rs`, `tests/api_quote.rs`, and `tests/api_contract_schema.rs`; resolve regressions in the corresponding `src/` modules.
 - [X] T054 [US3] Run `scripts/measure-moex-latency.sh`, `scripts/measure-spbex-latency.sh`, and `scripts/measure-cbr-latency.sh` against production sources using the local optimized binary, 10 concurrent clients, and 10 total requests per second; record per-route successful-response p95 and optimize/repeat until every route meets the one-second target in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, and `specs/003-cbr-currency-rates/quickstart.md`.
 - [X] T055 [US3] Build the final Linux amd64 image successfully using `Dockerfile`, then run Semgrep and Trivy against the final source and built deliverable; resolve every Semgrep finding and every fixable High/Critical Trivy finding and record results in `specs/003-cbr-currency-rates/quickstart.md`.
-- [X] T056 [US3] Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo test --test shutdown`, and the local scenarios in all three provider quickstarts; record any unavailable checks in the corresponding quickstarts.
+- [X] T056 [US3] Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, and `cargo test --test shutdown` with process checks in `tests/shutdown.rs`; run local scenarios in `specs/001-moex-ticker-update/quickstart.md`, `specs/002-spbex-ticker-update/quickstart.md`, and `specs/003-cbr-currency-rates/quickstart.md`, recording unavailable checks in those files.
 
 **Checkpoint**: The three adapters satisfy one public and internal contract, canonical shared configuration is used throughout, and cross-provider latency, build, shutdown, and scan gates pass.
 
@@ -241,8 +241,27 @@ US3 provider adapters after T039-T040: T041 src/moex/provider.rs; T042 src/spbex
 3. Centralize route, error, and configuration behavior and align the canonical contract and deployment documentation.
 4. Re-run cross-provider functional, latency, amd64 build, SIGINT, Semgrep, and Trivy acceptance before completion.
 
-**Remaining work**: T057 records the completed MOEX and SPBEX production history-cache lifecycle probes.
+**Remaining work**: None. The `EXCHANGE_API_*` namespace update and its final validation are complete.
 
 ## Phase 10: Convergence
 
-- [X] T057 Extend the MOEX and SPBEX production latency harnesses to report history cold-fetch, warm-cache-hit, and expiry-refresh lifecycle probes separately from fixed-arrival p95 profiles; record each state’s result with provider-specific and combined workload results in the corresponding quickstarts per plan Performance Goals (partial).
+- [X] T057 Extend `scripts/measure-moex-latency.py` and `scripts/measure-spbex-latency.py` to report history cold-fetch, warm-cache-hit, and expiry-refresh lifecycle probes separately from fixed-arrival p95 profiles; record each state’s result with provider-specific and combined workload results in `specs/001-moex-ticker-update/quickstart.md` and `specs/002-spbex-ticker-update/quickstart.md` per plan Performance Goals (partial).
+
+## Phase 11: Complete the EXCHANGE_API Configuration Namespace (User Story 3)
+
+**Goal**: Use the `EXCHANGE_API_*` prefix for all application configuration variables, including provider-specific upstream URLs and response-size limits, without compatibility aliases.
+
+**Independent Test**: Configuration accepts the documented shared and provider-specific `EXCHANGE_API_*` names, ignores prior provider-only and unprefixed names, and each provider measurement wrapper supplies the canonical names.
+
+- [X] T058 [P] [US3] Replace provider-only MOEX environment names with their `EXCHANGE_API_MOEX_*` names in `scripts/measure-moex-latency.sh` and `scripts/measure-moex-latency.py`.
+- [X] T059 [P] [US3] Replace provider-only MOEX and SPBEX environment names with their `EXCHANGE_API_MOEX_*` and `EXCHANGE_API_SPBEX_*` names in `scripts/measure-spbex-latency.sh` and `scripts/measure-spbex-latency.py`.
+- [X] T060 [P] [US3] Replace provider-only CBR environment names with their `EXCHANGE_API_CBR_*` names in `scripts/measure-cbr-latency.sh` and `scripts/measure-cbr-latency.py`.
+- [X] T061 [US3] After T051, audit all three provider quickstarts, plans, research documents, and `docker-compose.yml` to verify every application configuration variable uses an `EXCHANGE_API_*` name and that no outdated name remains.
+- [X] T062 [US3] Run configuration and application validation (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test`) and verify measurement scripts use only `EXCHANGE_API_*` variables in `scripts/measure-moex-latency.sh`, `scripts/measure-spbex-latency.sh`, and `scripts/measure-cbr-latency.sh`.
+- [X] T063 [US3] Build the Linux amd64 image and run final Semgrep and Trivy scans after the configuration changes; resolve every Semgrep finding and every fixable High/Critical Trivy finding and record results in `specs/003-cbr-currency-rates/quickstart.md`.
+
+### Phase 11 Dependencies and Parallel Work
+
+- T036 configuration assertions precede T047 configuration lookup changes; T002 and T005 cover the CBR-specific values under the same canonical names.
+- T058, T059, and T060 update separate provider measurement harnesses and can proceed in parallel after the canonical names are fixed in `src/config.rs`.
+- T051 updates provider configuration documentation; T061 audits those documents after T051 and does not repeat its edits. T062 validates the implementation, wrappers, and documentation. T063 is the final amd64 build and security-scan gate and depends on all earlier Phase 11 work.

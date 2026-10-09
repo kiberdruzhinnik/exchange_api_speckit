@@ -31,7 +31,7 @@ cd "$repo_root"
 cargo build --release --locked
 EXCHANGE_API_LISTEN_ADDR="$listen_addr" \
 EXCHANGE_API_HISTORY_CACHE_TTL_SECS="$benchmark_ttl" \
-MOEX_ISS_BASE_URL="https://iss.moex.com/iss/" \
+EXCHANGE_API_MOEX_ISS_BASE_URL="https://iss.moex.com/iss/" \
 EXCHANGE_API_HISTORY_CACHE_DB_PATH="$run_dir/history.sqlite3" \
 ./target/release/exchange-api >"$run_dir/server.log" 2>&1 &
 server_pid=$!

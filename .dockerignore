@@ -5,8 +5,15 @@
 specs
 /target
 .dockerignore
+Dockerfile*
+node_modules/
 *.log*
 .env*
 coverage/
 tests/
-.git/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

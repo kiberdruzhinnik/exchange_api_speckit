@@ -13,8 +13,8 @@ Optional environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SPBEX_API_BASE_URL` | `https://spbexchange.ru/api` | Public chart-feed base URL; override for fixture/mock tests. |
-| `SPBEX_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one chart-feed response. |
+| `EXCHANGE_API_SPBEX_API_BASE_URL` | `https://spbexchange.ru/api/` | Public chart-feed base URL; override for fixture/mock tests. |
+| `EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one chart-feed response. |
 | `EXCHANGE_API_LISTEN_ADDR` | `0.0.0.0:8080` | Shared service listen address. |
 | `EXCHANGE_API_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout, including SPBEX. |
 | `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` | `60` | Existing history freshness period. |

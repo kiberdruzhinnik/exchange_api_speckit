@@ -22,6 +22,7 @@
 - Q: Should shared runtime settings use one common naming scheme and remove the former MOEX-specific names rather than retain aliases? → A: Use a common naming scheme for shared settings and remove the former names without aliases.
 - Q: How should existing provider-specific upstream error codes be handled while standardizing the public error contract? → A: Preserve each provider’s existing upstream error code on its current `/v1` routes; standardize the JSON error envelope and HTTP status behavior so existing clients are not broken.
 - Q: Should the one-second p95 acceptance target apply to CBR routes only or to history and quote routes for all three providers? → A: The hard p95 target applies to all six MOEX, SPBEX, and CBR history and quote routes.
+- Q: What naming rule applies to application configuration environment variables? → A: Every application configuration environment variable MUST begin with `EXCHANGE_API_`, including provider-specific source and response-size settings.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -68,7 +69,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 3. **Given** a history-store operation fails while serving currency history, **When** a client requests history, **Then** the service returns HTTP `503` in the standard JSON error format.
 4. **Given** a client sends a lowercase symbol with surrounding whitespace to any provider route, **When** the request is processed, **Then** the provider receives the trimmed uppercase symbol; malformed or unsupported symbols receive the shared HTTP `400` outcome.
 5. **Given** any provider returns successful empty history or no quote, **When** the corresponding route is requested, **Then** history returns `[]` or quote returns one all-null record, while each provider retains its documented quote meaning.
-6. **Given** all three providers run with shared configuration, **When** the common runtime settings are configured, **Then** the listener, upstream timeout, history-cache TTL, capacity, and database path are shared; provider-specific source URL and response-size settings remain provider-specific.
+6. **Given** all three providers run with shared configuration, **When** application settings are configured, **Then** shared settings apply consistently, provider-specific settings remain independently configurable, and every application configuration environment variable begins with `EXCHANGE_API_`.
 7. **Given** a provider handles history or quote operations, **When** it is used by the service, **Then** it supports the common history and quote behavior and returns the shared normalized records and error outcomes.
 
 ### Edge Cases
@@ -83,6 +84,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 - The currency code is syntactically valid but is not currently supported by the Bank of Russia.
 - The source response is unavailable, malformed, oversized, or contains invalid dates or non-positive rates.
 - Providers receive the same normalized symbol and return the same validation, dependency, history-store, empty-history, and no-quote outcomes.
+- Every environment variable used to configure the application, including provider-specific source and response-size settings, begins with `EXCHANGE_API_`.
 - Persistent history cannot be read or saved.
 
 ## Requirements *(mandatory)*
@@ -114,6 +116,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 - **FR-022**: All providers MUST trim and uppercase symbols, return HTTP 400 for malformed or unsupported symbols, HTTP 502 for upstream failures, and HTTP 503 for history-store failures. Valid empty history MUST return `[]`; a successful quote lookup without a quote MUST return one record with all six fields null. Each provider MUST preserve its established upstream error code on its current `/v1` routes while using the shared JSON error envelope and status categories.
 - **FR-023**: Shared runtime settings for the listener, upstream timeout, history-cache freshness, capacity, and storage location MUST apply consistently to all providers. Provider-specific upstream source and response-size settings MAY vary by provider.
 - **FR-024**: Standardizing provider error behavior MUST NOT rename existing upstream error codes on current `/v1` routes; provider-specific codes MUST map to the common HTTP 502 upstream-failure category and standard JSON error envelope.
+- **FR-025**: Every environment variable used to configure the application MUST begin with the `EXCHANGE_API_` prefix, including provider-specific upstream source and response-size settings. No application configuration variable may use a provider-only prefix or an unprefixed legacy name.
 
 ### Key Entities *(include if data involved)*
 
@@ -135,6 +138,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 - **SC-008**: After Ctrl+C is sent to a running service, it stops accepting new requests and exits within 30 seconds, completing in-flight work where possible and canceling work remaining at the deadline.
 - **SC-009**: MOEX, SPBEX, and CBR expose the same documented history and quote response structure, symbol handling, and error outcomes, while each quote continues to represent its provider-specific data.
 - **SC-010**: Shared runtime settings affect all provider routes consistently; provider-specific source settings can be configured independently.
+- **SC-011**: Every documented and accepted application configuration environment variable begins with `EXCHANGE_API_`, including settings that vary by provider.
 
 ## Assumptions
 
@@ -144,4 +148,5 @@ A client can distinguish invalid input from temporary source failures, and all p
 - The rate's source effective date is returned. On weekends, holidays, or before a new rate is published, the quote uses the latest available official rate and does not invent a rate for today's date.
 - Currency support is determined from the Bank of Russia's current public currency list rather than a hard-coded list, so changes to supported currencies are reflected.
 - Shared route behavior follows the MOEX and SPBEX conventions: the six-field history-shaped JSON records, standard JSON error envelope, durable history, fresh uncached quotes, and common performance and service acceptance requirements. Provider-specific data mapping remains distinct: CBR quotes return the latest official rate, MOEX quotes return the latest executed trade, and SPBEX quotes return the latest available daily candle.
+- All application configuration is supplied through environment variables beginning with `EXCHANGE_API_`; provider-specific settings use names within this same namespace.
 - The existing application is intended for a private network and does not require application-level authentication for these routes.

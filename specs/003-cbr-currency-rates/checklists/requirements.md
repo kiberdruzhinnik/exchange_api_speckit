@@ -15,6 +15,7 @@
 
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
+- [x] All application configuration environment variables are required to use the `EXCHANGE_API_` prefix
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
 - [x] All acceptance scenarios are defined

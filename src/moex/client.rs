@@ -85,8 +85,19 @@ impl MoexClient {
     }
 
     pub async fn board_security(&self, symbol: &str, board: &str) -> anyhow::Result<Value> {
+        self.board_security_in_market(symbol, "stock", "shares", board)
+            .await
+    }
+
+    pub async fn board_security_in_market(
+        &self,
+        symbol: &str,
+        engine: &str,
+        market: &str,
+        board: &str,
+    ) -> anyhow::Result<Value> {
         self.get_json(
-            &format!("engines/stock/markets/shares/boards/{board}/securities/{symbol}.json"),
+            &format!("engines/{engine}/markets/{market}/boards/{board}/securities/{symbol}.json"),
             &[
                 ("iss.only", "securities".into()),
                 ("iss.meta", "off".into()),
@@ -113,9 +124,29 @@ impl MoexClient {
         self.decode_json(response).await
     }
 
+    pub async fn current_marketdata(
+        &self,
+        symbol: &str,
+        engine: &str,
+        market: &str,
+        board: &str,
+    ) -> anyhow::Result<Value> {
+        self.get_json(
+            &format!("engines/{engine}/markets/{market}/boards/{board}/securities/{symbol}.json"),
+            &[
+                ("iss.only", "securities,marketdata".into()),
+                ("iss.meta", "off".into()),
+            ],
+        )
+        .await
+    }
+
     async fn history_page(
         &self,
         symbol: &str,
+        engine: &str,
+        market: &str,
+        board: &str,
         offset: usize,
         after: Option<NaiveDate>,
     ) -> anyhow::Result<Value> {
@@ -133,11 +164,14 @@ impl MoexClient {
                     .to_string(),
             ));
         }
-        self.get_json(
-            &format!("history/engines/stock/markets/shares/securities/{symbol}.json"),
-            &query,
-        )
-        .await
+        let path = if board.is_empty() {
+            format!("history/engines/{engine}/markets/{market}/securities/{symbol}.json")
+        } else {
+            format!(
+                "history/engines/{engine}/markets/{market}/boards/{board}/securities/{symbol}.json"
+            )
+        };
+        self.get_json(&path, &query).await
     }
 
     pub async fn history(&self, symbol: &str) -> anyhow::Result<Value> {
@@ -149,8 +183,22 @@ impl MoexClient {
         symbol: &str,
         after: Option<NaiveDate>,
     ) -> anyhow::Result<Value> {
+        self.history_market_since(symbol, "stock", "shares", "", after)
+            .await
+    }
+
+    pub async fn history_market_since(
+        &self,
+        symbol: &str,
+        engine: &str,
+        market: &str,
+        board: &str,
+        after: Option<NaiveDate>,
+    ) -> anyhow::Result<Value> {
         const MAX_PARALLEL_HISTORY_PAGES: usize = 128;
-        let first_page = self.history_page(symbol, 0, after).await?;
+        let first_page = self
+            .history_page(symbol, engine, market, board, 0, after)
+            .await?;
         let history = &first_page["history"];
         let columns = history["columns"]
             .as_array()
@@ -205,8 +253,13 @@ impl MoexClient {
                 let Some(offset) = offsets.next() else { break };
                 let client = self.clone();
                 let symbol = symbol.to_owned();
+                let engine = engine.to_owned();
+                let market = market.to_owned();
+                let board = board.to_owned();
                 pages.spawn(async move {
-                    let value = client.history_page(&symbol, offset, after).await?;
+                    let value = client
+                        .history_page(&symbol, &engine, &market, &board, offset, after)
+                        .await?;
                     Ok::<_, anyhow::Error>((offset, value))
                 });
             }

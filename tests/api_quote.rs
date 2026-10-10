@@ -14,6 +14,14 @@ use wiremock::{
 async fn quote_app(trades: &'static str) -> (MockServer, axum::Router) {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
+        .and(path("/securities/SBER.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(include_str!("fixtures/moex/security-description.json")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
         .and(path(
             "/engines/stock/markets/shares/securities/SBER/trades.json",
         ))
@@ -52,7 +60,7 @@ async fn returns_latest_trade_as_one_history_shaped_record_and_fetches_each_time
         assert!(value[0]["low"].is_null());
         assert!(value[0]["facevalue"].is_null());
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 6);
 }
 
 #[tokio::test]
@@ -103,6 +111,14 @@ async fn returns_one_all_null_record_for_valid_empty_trade_block() {
 #[tokio::test]
 async fn rejects_failed_trade_response_as_dependency_error() {
     let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/securities/SBER.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(include_str!("fixtures/moex/security-description.json")),
+        )
+        .mount(&server)
+        .await;
     Mock::given(method("GET"))
         .and(path(
             "/engines/stock/markets/shares/securities/SBER/trades.json",

@@ -1,0 +1,1 @@
+{"securities":{"columns":["SECID","BOARDID","LOTSIZE"],"data":[["GLDRUB_TOM","CETS",1000]]},"marketdata":{"columns":["SECID","BOARDID","LAST","TIME","QTY"],"data":[["GLDRUB_TOM","CETS",81.25,"12:34:56",3]]}}

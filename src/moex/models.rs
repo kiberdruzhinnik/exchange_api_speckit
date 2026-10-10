@@ -1,5 +1,37 @@
 use serde_json::Value;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstrumentCategory {
+    Shares,
+    Index,
+    Currency,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoardAssignment {
+    pub engine: String,
+    pub market: String,
+    pub board: String,
+    pub primary: bool,
+    pub history_from: String,
+    pub history_till: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResolvedInstrument {
+    pub category: InstrumentCategory,
+    pub engine: String,
+    pub market: String,
+    pub boards: Vec<BoardAssignment>,
+    pub lotsizes: std::collections::HashMap<String, Option<f64>>,
+}
+
+impl ResolvedInstrument {
+    pub fn current_board(&self) -> Option<&BoardAssignment> {
+        self.boards.iter().find(|board| board.primary)
+    }
+}
+
 #[derive(Debug)]
 pub struct IssTable {
     pub columns: Vec<String>,

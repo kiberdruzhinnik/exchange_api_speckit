@@ -1,0 +1,19 @@
+openapi: 3.1.0
+info:
+  title: MOEX History and Quote API
+  version: 1.0.0
+  description: >-
+    MOEX routes support equities, market indices such as IMOEX, and currency-market
+    instruments such as GLDRUB_TOM. Existing six-field history and quote response
+    schemas and provider-specific errors remain unchanged.
+servers:
+  - url: /
+paths:
+  /v1/moex/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1moex~1{SYMBOL}'
+  /v1/moex/{SYMBOL}/quote:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1moex~1{SYMBOL}~1quote'
+  /v2/history/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1history~1{PROVIDER}~1{SYMBOL}'
+  /v2/quote/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1quote~1{PROVIDER}~1{SYMBOL}'

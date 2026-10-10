@@ -98,7 +98,17 @@ async fn serve_history(
     let symbol = provider
         .normalize_symbol(&input_symbol)
         .ok_or(ApiError::InvalidSymbol)?;
+    let history_context = provider
+        .history_preflight(&symbol)
+        .await
+        .map_err(|error| map_history_provider_error(provider.upstream_code(), error))?;
     if let Some(store) = &state.cache_store {
+        if namespace == "MOEX" {
+            store
+                .import_moex_legacy_history(&symbol)
+                .await
+                .map_err(|error| ApiError::Store(error.to_string()))?;
+        }
         let previous = store
             .collection(namespace.to_ascii_lowercase().as_str(), &symbol)
             .await
@@ -108,7 +118,7 @@ async fn serve_history(
             .and_then(|c| c.records.last().map(|r| r.date));
         tracing::info!(symbol = %symbol, provider = namespace, phase = "source_fetch", "history source fetch started");
         let records = provider
-            .history_since(&symbol, after)
+            .history_with_context(&symbol, after, history_context)
             .await
             .map_err(|e| map_history_provider_error(provider.upstream_code(), e))?;
         validate_request_records(provider.upstream_code(), &records)?;
@@ -146,13 +156,12 @@ async fn serve_history(
     let key = format!("{namespace}:{symbol}");
     let fetch_provider = provider.clone();
     let fetch_symbol = symbol.clone();
+    let fetch_context = history_context;
     let (body, outcome) = state
         .history_cache
         .get_or_fetch(key, move || async move {
             tracing::info!(symbol = %fetch_symbol, provider = namespace, phase = "source_fetch", "history source fetch started");
-            let records =
-                fetch_provider
-                    .history(&fetch_symbol)
+            let records = fetch_provider.history_with_context(&fetch_symbol, None, fetch_context)
                     .await
                     .map_err(|error| match error {
                         error => if matches!(error, crate::provider::ProviderError::InvalidSymbol) { format!("invalid symbol: {error}") } else { format!("upstream: {error}") },

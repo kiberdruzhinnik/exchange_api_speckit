@@ -93,6 +93,12 @@ impl CacheStore {
         .fetch_all(&self.pool)
         .await?;
         for (key, body) in rows {
+            // MOEX symbols must be validated against ISS before their cached history
+            // is moved into the durable collection. The first history request does
+            // this through `import_moex_legacy_history`.
+            if key.starts_with("MOEX:") {
+                continue;
+            }
             let Some((provider, symbol)) = legacy_identity(&key) else {
                 continue;
             };
@@ -106,6 +112,67 @@ impl CacheStore {
         sqlx::query("INSERT OR IGNORE INTO history_schema_migrations(version) VALUES(1)")
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    /// Import one recognized MOEX symbol's legacy response into its durable
+    /// collection. The source row is deleted in the same transaction as the
+    /// collection merge, so failed imports remain available for a retry.
+    pub async fn import_moex_legacy_history(&self, symbol: &str) -> Result<(), sqlx::Error> {
+        let key = format!("MOEX:{symbol}");
+        let Some(body) = sqlx::query_scalar::<_, Vec<u8>>(
+            "SELECT response_body FROM history_cache WHERE symbol = ?",
+        )
+        .bind(&key)
+        .fetch_optional(&self.pool)
+        .await?
+        else {
+            return Ok(());
+        };
+
+        let exists: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM history_collections WHERE provider='moex' AND symbol=?",
+        )
+        .bind(symbol)
+        .fetch_optional(&self.pool)
+        .await?;
+        if exists.is_some() {
+            return Ok(());
+        }
+
+        let records: Vec<DailyMarketRecord> =
+            serde_json::from_slice(&body).map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
+        let mut identities = HashSet::with_capacity(records.len());
+        for record in &records {
+            if !identities.insert(record.date.to_rfc3339()) {
+                return Err(sqlx::Error::Protocol(
+                    "duplicate history record date".into(),
+                ));
+            }
+        }
+
+        let mut tx = self.pool.begin().await?;
+        let now = unix_millis();
+        let latest = records
+            .iter()
+            .map(|record| record.date)
+            .max()
+            .map(|date| date.to_rfc3339());
+        sqlx::query("INSERT INTO history_collections(provider,symbol,latest_record_date,last_full_refresh_at,consecutive_failures,next_attempt_at,updated_at) VALUES('moex',?,?,NULL,0,NULL,?)")
+            .bind(symbol).bind(latest).bind(now).execute(&mut *tx).await?;
+        for record in &records {
+            sqlx::query("INSERT INTO history_records(provider,symbol,record_date,record_json) VALUES('moex',?,?,?)")
+                .bind(symbol)
+                .bind(record.date.to_rfc3339())
+                .bind(serde_json::to_string(record).map_err(|error| sqlx::Error::Encode(Box::new(error)))?)
+                .execute(&mut *tx).await?;
+        }
+        sqlx::query("DELETE FROM history_cache WHERE symbol=?")
+            .bind(&key)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        self.changed.notify_one();
         Ok(())
     }
 

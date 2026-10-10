@@ -1,0 +1,1 @@
+{"history":{"columns":["BOARDID","TRADEDATE","CLOSE","HIGH","LOW","NUMTRADES","WAPRICE"],"data":[["CETS","2026-10-01",80,81,79,23,80.2],["CNGD","2026-10-01",81,82,80,3,81.2],["LICU","2026-10-01",79,80,78,2,79.2]]},"history.cursor":{"columns":["INDEX","TOTAL","PAGESIZE"],"data":[[0,3,100]]}}

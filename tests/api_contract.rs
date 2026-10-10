@@ -87,7 +87,7 @@ async fn returns_six_field_array() {
         .await
         .unwrap();
     assert_eq!(cached_response.status(), StatusCode::OK);
-    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 4);
 }
 
 #[tokio::test]
@@ -181,7 +181,7 @@ async fn warm_response_cache_meets_one_second_local_p95() {
     samples.sort();
     let p95 = samples[95];
     assert!(p95 < Duration::from_secs(1), "local p95 was {p95:?}");
-    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 103);
 }
 
 #[tokio::test]

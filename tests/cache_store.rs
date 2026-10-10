@@ -113,16 +113,8 @@ async fn migrates_legacy_keys_and_consolidates_spbex_date_suffixes() {
     }
     pool.close().await;
     let store = CacheStore::open(&path, 1).await.unwrap();
-    assert_eq!(
-        store
-            .collection("moex", "SBER")
-            .await
-            .unwrap()
-            .unwrap()
-            .records
-            .len(),
-        1
-    );
+    assert!(store.collection("moex", "SBER").await.unwrap().is_none());
+    assert!(store.get("MOEX:SBER").await.unwrap().is_some());
     assert_eq!(
         store
             .collection("cbr", "USD")
@@ -136,7 +128,7 @@ async fn migrates_legacy_keys_and_consolidates_spbex_date_suffixes() {
     let spbex = store.collection("spbex", "SIBN").await.unwrap().unwrap();
     assert_eq!(spbex.records.len(), 1);
     assert_eq!(spbex.records[0].close, Some(2.0));
-    assert_eq!(store.collections().await.unwrap().len(), 3);
+    assert_eq!(store.collections().await.unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -195,5 +187,94 @@ async fn failed_transaction_preserves_existing_rows_and_refresh_metadata() {
     let collection = store.collection("moex", "SBER").await.unwrap().unwrap();
     assert_eq!(collection.records, vec![initial]);
     assert_eq!(collection.last_full_refresh_at, Some(10));
+    admin.close().await;
+}
+
+#[tokio::test]
+async fn imports_exact_moex_legacy_key_once_and_defers_it_during_startup_migration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite3");
+    let pool = sqlx::SqlitePool::connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true),
+    )
+    .await
+    .unwrap();
+    sqlx::query("CREATE TABLE history_cache (symbol TEXT PRIMARY KEY NOT NULL, response_body BLOB NOT NULL, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL DEFAULT 9223372036854775807, response_bytes INTEGER NOT NULL)")
+        .execute(&pool).await.unwrap();
+    let body = serde_json::to_vec(&vec![record("2026-10-01T00:00:00Z", 100.0)]).unwrap();
+    for (key, data) in [
+        ("MOEX:IMOEX", body.clone()),
+        ("MOEX:OTHER", b"not-json".to_vec()),
+    ] {
+        sqlx::query("INSERT INTO history_cache(symbol,response_body,fetched_at,response_bytes) VALUES(?,?,0,?)")
+            .bind(key).bind(&data).bind(data.len() as i64).execute(&pool).await.unwrap();
+    }
+    pool.close().await;
+
+    let store = CacheStore::open(&path, 1024).await.unwrap();
+    assert!(store.collection("moex", "IMOEX").await.unwrap().is_none());
+    assert!(store.get("MOEX:IMOEX").await.unwrap().is_some());
+    assert!(store.import_moex_legacy_history("OTHER").await.is_err());
+    assert!(store.get("MOEX:OTHER").await.unwrap().is_some());
+    store.import_moex_legacy_history("IMOEX").await.unwrap();
+    store.import_moex_legacy_history("IMOEX").await.unwrap();
+    let collection = store.collection("moex", "IMOEX").await.unwrap().unwrap();
+    assert_eq!(collection.records.len(), 1);
+    assert_eq!(collection.records[0].close, Some(100.0));
+    assert!(store.get("MOEX:IMOEX").await.unwrap().is_none());
+    assert!(store.get("MOEX:OTHER").await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn leaves_legacy_row_when_durable_collection_already_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite3");
+    let store = CacheStore::open(&path, 1024).await.unwrap();
+    store
+        .put("MOEX:IMOEX", &Bytes::from_static(b"[]"), Duration::ZERO)
+        .await
+        .unwrap();
+    let existing = record("2026-10-02T00:00:00Z", 101.0);
+    store
+        .merge_records("moex", "IMOEX", &[existing.clone()], true, 10)
+        .await
+        .unwrap();
+    store.import_moex_legacy_history("IMOEX").await.unwrap();
+    assert_eq!(
+        store
+            .collection("moex", "IMOEX")
+            .await
+            .unwrap()
+            .unwrap()
+            .records,
+        vec![existing]
+    );
+    assert!(store.get("MOEX:IMOEX").await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn failed_moex_legacy_import_preserves_source_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite3");
+    let store = CacheStore::open(&path, 1024).await.unwrap();
+    let body = serde_json::to_vec(&vec![record("2026-10-01T00:00:00Z", 100.0)]).unwrap();
+    store
+        .put("MOEX:IMOEX", &Bytes::from(body), Duration::ZERO)
+        .await
+        .unwrap();
+    let admin = sqlx::SqlitePool::connect_with(
+        sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(false),
+    )
+    .await
+    .unwrap();
+    sqlx::query("CREATE TRIGGER fail_moex_import BEFORE INSERT ON history_records BEGIN SELECT RAISE(ABORT, 'injected storage failure'); END")
+        .execute(&admin).await.unwrap();
+    assert!(store.import_moex_legacy_history("IMOEX").await.is_err());
+    assert!(store.get("MOEX:IMOEX").await.unwrap().is_some());
+    assert!(store.collection("moex", "IMOEX").await.unwrap().is_none());
     admin.close().await;
 }

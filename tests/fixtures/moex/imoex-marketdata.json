@@ -1,0 +1,1 @@
+{"securities":{"columns":["SECID","BOARDID"],"data":[["IMOEX","SNDX"]]},"marketdata":{"columns":["SECID","BOARDID","CURRENTVALUE","LASTVALUE","SYSTIME"],"data":[["IMOEX","SNDX",3215.5,3214.2,"13:00:00"]]}}

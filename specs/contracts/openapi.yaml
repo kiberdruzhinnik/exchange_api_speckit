@@ -21,8 +21,8 @@ paths:
   /v1/moex/{SYMBOL}:
     get:
       operationId: getMoexTickerHistory
-      summary: Get daily history for a MOEX ticker
-      description: Returns the complete retained daily history in ascending date order, fetching only dates newer than the latest retained date. A background worker also full-refreshes retained symbols. `facevalue` is the board-specific current LOTSIZE selected for each trading date.
+      summary: Get daily history for a MOEX instrument
+      description: Supports MOEX equities, benchmark indices such as IMOEX, and currency-market instruments such as GLDRUB_TOM. Returns the complete retained daily history in ascending date order, fetching only dates newer than the latest retained date. On a first history request, MOEX metadata is validated before matching legacy cache data is imported; recognized cached records are merged with fetched records. Index and currency fields unavailable from ISS are null; `facevalue` is the board-specific LOTSIZE for existing traded instruments.
       parameters:
         - $ref: '#/components/parameters/MoexSymbol'
       responses:
@@ -34,13 +34,23 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DailyMarketRecord'
-              example:
-                - date: '2013-03-25T00:00:00Z'
-                  close: 73.35
-                  high: 75.05
-                  low: 73.21
-                  volume: 120300
-                  facevalue: 1
+              examples:
+                IMOEX:
+                  value:
+                    - date: '2026-10-02T00:00:00Z'
+                      close: 3210
+                      high: 3220
+                      low: 3200
+                      volume: 0
+                      facevalue: null
+                GLDRUB_TOM:
+                  value:
+                    - date: '2026-10-02T00:00:00Z'
+                      close: 80
+                      high: 81
+                      low: 79
+                      volume: null
+                      facevalue: null
         '400':
           $ref: '#/components/responses/InvalidSymbol'
         '502':
@@ -50,13 +60,13 @@ paths:
   /v1/moex/{SYMBOL}/quote:
     get:
       operationId: getMoexTickerLatestTrade
-      summary: Get the latest executed trade for a MOEX ticker
-      description: Fetches the latest trade for each request. Returns one history-shaped record; a successful response with no trade returns one all-null record. Quote responses are not cached.
+      summary: Get the current value for a MOEX instrument
+      description: Fetches current data for each request and returns one history-shaped record. Equities and currency-market instruments represent the latest executed trade; indices represent the latest non-null published CURRENTVALUE, falling back to LASTVALUE. A successful response with no trade or published value returns one all-null record. Quote responses are not cached.
       parameters:
         - $ref: '#/components/parameters/MoexSymbol'
       responses:
         '200':
-          description: Exactly one latest-trade record, or one all-null record when MOEX reports no trade.
+          description: Exactly one current-value record or one all-null record when MOEX reports no current value.
           content:
             application/json:
               schema:
@@ -65,13 +75,31 @@ paths:
                 maxItems: 1
                 items:
                   $ref: '#/components/schemas/LatestQuoteRecord'
-              example:
-                - date: '2026-10-08T08:41:57Z'
-                  close: 280.34
-                  high: null
-                  low: null
-                  volume: 1
-                  facevalue: null
+              examples:
+                latestTrade:
+                  value:
+                    - date: '2026-10-08T08:41:57Z'
+                      close: 280.34
+                      high: null
+                      low: null
+                      volume: 1
+                      facevalue: null
+                IMOEXPublishedValue:
+                  value:
+                    - date: '2026-10-08T10:00:00Z'
+                      close: 3215.5
+                      high: null
+                      low: null
+                      volume: null
+                      facevalue: null
+                GLDRUBTOMLatestTrade:
+                  value:
+                    - date: '2026-10-08T08:41:57Z'
+                      close: 81.25
+                      high: null
+                      low: null
+                      volume: 3000
+                      facevalue: null
         '400':
           $ref: '#/components/responses/InvalidSymbol'
         '502':
@@ -260,11 +288,11 @@ components:
       name: SYMBOL
       in: path
       required: true
-      description: MOEX security identifier; surrounding whitespace is trimmed and letters are uppercased before provider validation.
+      description: MOEX instrument identifier; examples include IMOEX and GLDRUB_TOM. Surrounding whitespace is trimmed and letters are uppercased before validation. Underscores may separate alphanumeric parts, with no leading, trailing, or repeated underscores.
       schema:
         type: string
         minLength: 1
-        pattern: '^[A-Za-z0-9._-]+$'
+        pattern: '^(?:[A-Za-z0-9.-]+|[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+)$'
     SpbexSymbol:
       name: SYMBOL
       in: path
@@ -412,7 +440,7 @@ components:
               code: history_store_unavailable
               message: Ticker history is temporarily unavailable
     MoexUpstreamUnavailable:
-      description: MOEX ISS failed or returned unusable data (HTTP 502); retains the existing `moex_unavailable` code.
+      description: MOEX ISS metadata, history, or current-marketdata lookup failed or returned unusable data (HTTP 502); retains the existing `moex_unavailable` code. A valid but unrecognized MOEX instrument returns HTTP 400 instead and does not trigger legacy history migration.
       content:
         application/json:
           schema:

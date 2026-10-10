@@ -10,9 +10,15 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 FIXTURES = {
     "/iss/securities/SBER.json": ROOT / "moex/security-description.json",
+    "/iss/securities/IMOEX.json": ROOT / "moex/imoex-security.json",
+    "/iss/securities/GLDRUB_TOM.json": ROOT / "moex/gldrub_tom-security.json",
     "/iss/engines/stock/markets/shares/boards/TQBR/securities/SBER.json": ROOT / "moex/security-tqbr.json",
     "/iss/history/engines/stock/markets/shares/securities/SBER.json": ROOT / "moex/history-page.json",
+    "/iss/history/engines/stock/markets/index/boards/SNDX/securities/IMOEX.json": ROOT / "moex/imoex-history.json",
+    "/iss/history/engines/currency/markets/selt/boards/CETS/securities/GLDRUB_TOM.json": ROOT / "moex/gldrub_tom-history.json",
     "/iss/engines/stock/markets/shares/securities/SBER/trades.json": ROOT / "moex/trades-latest.json",
+    "/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX.json": ROOT / "moex/imoex-marketdata.json",
+    "/iss/engines/currency/markets/selt/boards/CETS/securities/GLDRUB_TOM.json": ROOT / "moex/gldrub_tom-marketdata.json",
     "/spbex/api/reader/marketdata/charts/chistory": ROOT / "spbex/history.json",
     "/cbr/scripts/XML_valFull.asp": ROOT / "cbr/currencies.xml",
     "/cbr/scripts/XML_dynamic.asp": ROOT / "cbr/history.xml",

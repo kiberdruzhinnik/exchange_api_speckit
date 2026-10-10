@@ -1,5 +1,5 @@
 use exchange_api::moex::{
-    board::{board_on_date, primary_board_by_date},
+    board::{board_on_date, primary_board_by_date, resolve_instrument},
     mapping::map_history,
 };
 use serde_json::Value;
@@ -77,6 +77,18 @@ fn chooses_primary_board_that_applied_on_each_trading_date() {
         );
     }
     assert_eq!(selected.len(), 2);
+}
+
+#[test]
+fn rejects_unusable_primary_board_effective_dates() {
+    for name in [
+        "imoex-security-malformed-date",
+        "imoex-security-inverted-date",
+        "imoex-security-overlapping-dates",
+    ] {
+        let error = resolve_instrument(&fixture(name)).unwrap_err();
+        assert!(error.to_string().contains("MOEX"), "{name}: {error}");
+    }
 }
 
 #[test]

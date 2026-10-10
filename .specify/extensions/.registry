@@ -14,20 +14,6 @@
       },
       "registered_skills": [],
       "installed_at": "2026-10-09T17:08:37.104457+00:00"
-    },
-    "memory-loader": {
-      "version": "1.0.0",
-      "source": "local",
-      "manifest_hash": "sha256:d1caef45965accd4316d8aede0a4ac67f910017ea3c501814cfc7e2d8177ab0b",
-      "enabled": true,
-      "priority": 10,
-      "registered_commands": {
-        "codex": [
-          "speckit.memory-loader.load"
-        ]
-      },
-      "registered_skills": [],
-      "installed_at": "2026-10-09T17:13:49.630255+00:00"
     }
   }
 }

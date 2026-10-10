@@ -10,6 +10,12 @@
 
 ## Clarifications
 
+### Session 2026-10-10
+
+- Q: What status should the feature spec show while its newly added follow-up tasks remain open? → A: Draft.
+- Q: Should the unset-refresh-settings acceptance scenario explicitly cover both v2 history and quote routes? → A: Yes; both route types must remain available when both settings are unset.
+- Q: Should I apply this v2 route availability requirement to the active `006-log-coloring` spec, or treat it as a separate v2 routes feature? → A: Treat it as a separate v2 routes feature spec (`005-v2-history-quote-api`).
+
 ### Session 2026-10-09
 
 - Q: Should each v2 route be measured separately at 10 total requests per second with 10 concurrent clients? → A: Run six separate route profiles, one for each v2 provider history and quote route, each at 10 total requests per second with 10 concurrent clients; at least 95% of successful responses in each profile must complete in under one second.
@@ -32,6 +38,7 @@ As an API client, I want to fetch a symbol's complete history from a versioned v
 2. **Given** an unsupported provider or malformed or unsupported symbol, **When** its v2 history route is requested, **Then** the service returns the established client error behavior.
 3. **Given** the source or history store fails, **When** the v2 history route is requested, **Then** the service returns the established upstream or store error behavior.
 4. **Given** a valid provider-symbol pair and the source successfully returns no history, **When** its v2 history route is requested, **Then** the service returns an empty array (`[]`).
+5. **Given** `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are both unset, **When** a v2 history route is requested, **Then** the route is available and history refresh uses the existing defaults.
 
 ### User Story 2 - Fetch the current quote from v2 (Priority: P1)
 
@@ -46,6 +53,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 1. **Given** a supported provider and symbol with current source data, **When** its v2 quote route is requested, **Then** the service returns that provider's current quote in the established one-record, six-field format.
 2. **Given** a valid provider-symbol pair with no quote data, **When** its v2 quote route is requested, **Then** the service returns the established no-quote result.
 3. **Given** the source is unavailable or returns unusable data, **When** the v2 quote route is requested, **Then** the service returns the established upstream error behavior.
+4. **Given** `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are both unset, **When** a v2 quote route is requested, **Then** the route is available.
 
 ### Edge Cases
 
@@ -64,6 +72,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 - **FR-005**: V2 quote responses MUST preserve the established current-quote behavior and six-field record schema.
 - **FR-006**: The v2 routes MUST preserve established symbol validation and actionable upstream, store, and no-data outcomes.
 - **FR-007**: The existing v1 provider-specific history and quote routes MUST remain available while clients migrate to v2.
+- **FR-008**: The v2 history and quote routes MUST be registered and available when `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are unset; those settings MUST use their existing defaults of seven days and 900 seconds, respectively, and MUST NOT control route availability.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -79,9 +88,11 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 - **SC-003**: All v1 history and quote routes continue to return their existing documented outcomes during the v2 migration.
 - **SC-004**: Invalid, unsupported, ambiguous, and unavailable-symbol cases return documented outcomes without serving data from an unintended provider.
 - **SC-005**: In a separate workload profile for each of the six v2 provider history and quote routes, at 10 total requests per second with 10 concurrent clients, at least 95% of successful responses complete in under one second. For MOEX history, measure the initial uncached full-history fetch separately and report its latency and outcome; apply the one-second criterion to a separate profile run after the full history has been populated in the cache, measuring subsequent cached history requests.
+- **SC-006**: With both history refresh settings unset, all six v2 provider history and quote routes respond according to their documented contracts, and history refresh uses the seven-day full-refresh interval and 900-second retry backoff defaults.
 
 ## Assumptions
 
 - V2 changes route organization only; established provider mappings, cache lifecycle, response records, and error contracts remain unchanged.
 - V1 provider-specific routes remain available to preserve compatibility unless a later migration decision changes that policy.
 - The v2 route paths are exactly `/v2/history/{PROVIDER}/{SYMBOL}` and `/v2/quote/{PROVIDER}/{SYMBOL}`; braces denote path parameters and are not literal URL characters.
+- The full-refresh interval and retry-backoff settings default to seven days and 900 seconds, respectively, as defined by the permanent history cache refresh feature.

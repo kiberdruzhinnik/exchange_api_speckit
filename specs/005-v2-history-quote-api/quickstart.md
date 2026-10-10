@@ -11,6 +11,8 @@
 EXCHANGE_API_LISTEN_ADDR=127.0.0.1:8080 cargo run
 ```
 
+`EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are optional. When omitted, they default to 604800 seconds (seven days) and 900 seconds, respectively. These settings control background history refresh and retries; they do not enable or disable v2 routes. The v2 history and quote routes are available by default.
+
 Configure any provider source and persistent history settings as required by the existing service deployment.
 
 ## Validate the v2 routes
@@ -40,6 +42,12 @@ Run the Rust suite and verify it covers v2 provider selection, each history/quot
 
 ```sh
 cargo test
+```
+
+The subprocess regression test starts the service with both refresh settings absent and checks that the v2 routes reach their handlers:
+
+```sh
+cargo test --test api_default_config
 ```
 
 ## Performance acceptance

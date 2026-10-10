@@ -8,14 +8,14 @@
 
 **What was added:**
 - MOEX history and quote support for market benchmarks such as IMOEX and traded currency instruments such as GLDRUB_TOM over the existing v1 and v2 routes.
-- Market-aware metadata and primary-board resolution, benchmark published-value quotes, currency trade quotes with LOTSIZE conversion, and single-underscore symbol segments for newly supported categories.
+- Market-aware metadata and primary-board resolution with effective-date interval validation, benchmark published-value quotes, currency trade quote mapping, and single-underscore symbol segments for newly supported categories.
 - Metadata recognition before targeted migration of a newly supported instrument's legacy history, with migration before retrieval and preservation of the legacy row on failure.
-- Updated MOEX API contract documentation, fixture-backed coverage, and validation/performance/release results in the feature quickstart.
+- Updated MOEX API contract documentation, malformed-source and board-interval fixture coverage, and validation/performance/release results in the feature quickstart.
 
 **New Components:**
 - MOEX index and currency mapping modules, market-aware metadata/context handling, targeted legacy-cache migration, and fixture-backed index, currency, and API migration coverage.
 
-**Tasks Completed:** 31/31 tasks
+**Tasks Completed:** 36/36 tasks
 
 ### Configurable Log Coloring — archived 2026-10-10
 **Branch:** 006-log-coloring

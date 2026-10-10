@@ -1,7 +1,6 @@
 # Specification Quality Checklist: SPBEX Ticker History and Quote API
 
-**Purpose**: Validate specification completeness and quality before proceeding
-to planning
+**Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-10-08
 **Feature**: [spec.md](../spec.md)
 
@@ -32,9 +31,6 @@ to planning
 
 ## Notes
 
-- Clarifications resolved: quote returns the latest available daily candle, and
-    unavailable SPBEX volume is `null`.
-- The referenced Go adapter does not map chart volume; its unsigned volume field
-    serializes as `0`, but the API uses `null` to represent missing source data
-    accurately.
+- Clarifications resolved: quote returns the latest available daily candle, and unavailable SPBEX volume is `null`.
+- The referenced Go adapter does not map chart volume; its unsigned volume field serializes as `0`, but the API uses `null` to represent missing source data accurately.
 - All checklist items pass; the feature is ready for planning.

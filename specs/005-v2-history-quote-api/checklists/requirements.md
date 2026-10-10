@@ -1,7 +1,6 @@
 # Specification Quality Checklist: V2 History and Quote Routes
 
-**Purpose**: Validate specification completeness and quality before proceeding
-to planning
+**Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-10-09
 **Feature**: [spec.md](../spec.md)
 
@@ -26,11 +25,9 @@ to planning
 ## Feature Readiness
 
 - [x] User scenarios cover the primary flows
-- [x] Existing response formats and error behavior are identified for
-    preservation
+- [x] Existing response formats and error behavior are identified for preservation
 - [x] Provider selection for v2 symbols is settled
 
 ## Notes
 
-- Provider selection uses the `{PROVIDER}` path segment (`moex`, `spbex`, or
-    `cbr`). Existing v1 routes remain available.
+- Provider selection uses the `{PROVIDER}` path segment (`moex`, `spbex`, or `cbr`). Existing v1 routes remain available.

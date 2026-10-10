@@ -1,7 +1,6 @@
 # Specification Quality Checklist: Permanent History Cache Refresh
 
-**Purpose**: Validate specification completeness and quality before proceeding
-to planning
+**Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-10-09
 **Feature**: [spec.md](../spec.md)
 

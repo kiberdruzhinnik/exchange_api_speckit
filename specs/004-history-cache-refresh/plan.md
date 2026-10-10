@@ -1,88 +1,42 @@
 # Implementation Plan: Permanent History Cache Refresh
 
-**Branch**: `[004-history-cache-refresh]` | **Date**: 2026-10-09 | **Spec**:
-[spec.md](spec.md)
+**Branch**: `[004-history-cache-refresh]` | **Date**: 2026-10-09 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature specification at `specs/004-history-cache-refresh/spec.md`
 
 ## Summary
 
-Retain normalized history records durably without age-based expiry, refresh only
-records newer than the latest retained date during a history request, and run a
-configurable background full refresh for every known provider/symbol pair. Keep
-the existing six-field HTTP response and provider mappings. Use persisted
-per-symbol refresh metadata and atomic record merges so restarts, request
-refreshes, and scheduled refreshes cannot lose history.
+Retain normalized history records durably without age-based expiry, refresh only records newer than the latest retained date during a history request, and run a configurable background full refresh for every known provider/symbol pair. Keep the existing six-field HTTP response and provider mappings. Use persisted per-symbol refresh metadata and atomic record merges so restarts, request refreshes, and scheduled refreshes cannot lose history.
 
 ## Technical Context
 
 **Language/Version**: Rust 2024 edition, minimum Rust 1.85
 
-**Primary Dependencies**: Axum 0.8, Tokio 1.53, Reqwest 0.13, SQLx 0.8 with
-SQLite, Serde
+**Primary Dependencies**: Axum 0.8, Tokio 1.53, Reqwest 0.13, SQLx 0.8 with SQLite, Serde
 
-**Storage**: Existing durable SQLite history store at
-`EXCHANGE_API_HISTORY_CACHE_DB_PATH`; schema requires migration to retain
-provider/symbol identity and full-refresh metadata
+**Storage**: Existing durable SQLite history store at `EXCHANGE_API_HISTORY_CACHE_DB_PATH`; schema requires migration to retain provider/symbol identity and full-refresh metadata
 
-**Testing**: Required Rust unit, provider client, API contract, scheduler, and
-SQLite migration/integration checks (`cargo test`); fixture-backed upstream
-clients use Wiremock
+**Testing**: Required Rust unit, provider client, API contract, scheduler, and SQLite migration/integration checks (`cargo test`); fixture-backed upstream clients use Wiremock
 
-**Target Platform**: Linux server/container; graceful SIGINT shutdown is bounded
-to 30 seconds
+**Target Platform**: Linux server/container; graceful SIGINT shutdown is bounded to 30 seconds
 
 **Project Type**: Rust REST microservice
 
-**Performance Goals**: Preserve the six-route acceptance target: at least 95% of
-successful responses under one second at 10 total requests per second and 10
-concurrent clients. The refreshed history path now contacts upstream on every
-request, so its latency must be measured and optimized without returning stale
-success data.
+**Performance Goals**: Preserve the six-route acceptance target: at least 95% of successful responses under one second at 10 total requests per second and 10 concurrent clients. The refreshed history path now contacts upstream on every request, so its latency must be measured and optimized without returning stale success data.
 
-**Constraints**: History rows must not expire or be automatically evicted.
-Existing 64 MiB `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` cannot remain a
-persistent eviction limit while satisfying indefinite retention; it may continue
-to bound transient/in-memory use, but persistent data must be preserved. Remove
-`EXCHANGE_API_HISTORY_CACHE_TTL_SECS`; fail startup with a clear migration
-message if it remains set. New `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS`
-defaults to 604800 seconds and must be positive. Retryable background failures
-use exponential backoff from one second, capped by positive
-`EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` (default 900); persist
-retry state. Validate full-refresh data before atomically updating records or
-success metadata. Provider response limits and request timeouts continue to
-apply.
+**Constraints**: History rows must not expire or be automatically evicted. Existing 64 MiB `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` cannot remain a persistent eviction limit while satisfying indefinite retention; it may continue to bound transient/in-memory use, but persistent data must be preserved. Remove `EXCHANGE_API_HISTORY_CACHE_TTL_SECS`; fail startup with a clear migration message if it remains set. New `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` defaults to 604800 seconds and must be positive. Retryable background failures use exponential backoff from one second, capped by positive `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` (default 900); persist retry state. Validate full-refresh data before atomically updating records or success metadata. Provider response limits and request timeouts continue to apply.
 
-**Scale/Scope**: Three provider namespaces and arbitrary validated symbols; the
-background worker must process every symbol already present in the durable store
-according to the configured interval, defaulting to seven days, including
-symbols not requested since the prior run. Bound worker concurrency to avoid
-overload of public upstreams.
+**Scale/Scope**: Three provider namespaces and arbitrary validated symbols; the background worker must process every symbol already present in the durable store according to the configured interval, defaulting to seven days, including symbols not requested since the prior run. Bound worker concurrency to avoid overload of public upstreams.
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- REST API Contracts First: **PASS** — response schema and routes stay stable;
-    document history refresh behavior and new configuration contract.
-- Documentation Is Part of Delivery: **PASS** — update operational guidance,
-    environment-variable documentation, OpenAPI route descriptions, and
-    validation guide.
-- Clear Microservice Boundaries: **PASS** — each existing provider remains
-    responsible for fetching and mapping its own data; the shared cache
-    coordinates persistence only.
-- Compatibility and Change Management: **PASS WITH MIGRATION NOTE** — preserve
-    routes and response shape; remove the prior TTL setting with a clear startup
-    migration message and clarify that the cache byte setting no longer evicts
-    durable history. Existing cache rows require a migration that preserves all
-    rows and treats their contents as retained history.
-- Practical Quality and Operability: **PASS WITH ACCEPTANCE GATE** — retain
-    actionable provider/store errors and last-good data, validate full responses
-    before atomic commit, log scheduled refresh outcomes, apply capped
-    configurable retries, bound concurrency, and integrate the scheduler with
-    30-second graceful shutdown. Implementation must pass the established route
-    performance gate. Release completion still requires the
-    constitution-mandated Semgrep and Trivy scans.
+- REST API Contracts First: **PASS** — response schema and routes stay stable; document history refresh behavior and new configuration contract.
+- Documentation Is Part of Delivery: **PASS** — update operational guidance, environment-variable documentation, OpenAPI route descriptions, and validation guide.
+- Clear Microservice Boundaries: **PASS** — each existing provider remains responsible for fetching and mapping its own data; the shared cache coordinates persistence only.
+- Compatibility and Change Management: **PASS WITH MIGRATION NOTE** — preserve routes and response shape; remove the prior TTL setting with a clear startup migration message and clarify that the cache byte setting no longer evicts durable history. Existing cache rows require a migration that preserves all rows and treats their contents as retained history.
+- Practical Quality and Operability: **PASS WITH ACCEPTANCE GATE** — retain actionable provider/store errors and last-good data, validate full responses before atomic commit, log scheduled refresh outcomes, apply capped configurable retries, bound concurrency, and integrate the scheduler with 30-second graceful shutdown. Implementation must pass the established route performance gate. Release completion still requires the constitution-mandated Semgrep and Trivy scans.
 
 No unjustified constitution violations identified.
 
@@ -125,40 +79,25 @@ tests/
 └── [provider client/API tests] # Incremental boundaries and background refresh fixtures
 ```
 
-**Structure Decision**: Extend the existing single Rust service and its provider
-clients, shared cache/store, route handlers, and executable lifecycle. Do not
-add a service or a second runtime store.
+**Structure Decision**: Extend the existing single Rust service and its provider clients, shared cache/store, route handlers, and executable lifecycle. Do not add a service or a second runtime store.
 
 ## Complexity Tracking
 
-No constitution violations require a complexity exception. The schema migration
-and scheduler are necessary to satisfy durable history and unattended refresh
-requirements within the existing service boundary.
+No constitution violations require a complexity exception. The schema migration and scheduler are necessary to satisfy durable history and unattended refresh requirements within the existing service boundary.
 
 ## Phase 0: Outline & Research
 
-Research decisions and alternatives are recorded in [research.md](research.md).
-No unresolved `NEEDS CLARIFICATION` items remain.
+Research decisions and alternatives are recorded in [research.md](research.md). No unresolved `NEEDS CLARIFICATION` items remain.
 
 ## Phase 1: Design & Contracts
 
-- [data-model.md](data-model.md) defines persistent provider/symbol metadata and
-    date-keyed history records.
-- [contracts/history-refresh.yaml](contracts/history-refresh.yaml) defines the
-    new configuration and observable refresh behavior; HTTP route payload
-    contracts remain unchanged.
-- [quickstart.md](quickstart.md) describes fixture-backed lifecycle, incremental
-    refresh, the configured background cadence (seven-day default), retry/error
-    classification, migration, and performance validation.
+- [data-model.md](data-model.md) defines persistent provider/symbol metadata and date-keyed history records.
+- [contracts/history-refresh.yaml](contracts/history-refresh.yaml) defines the new configuration and observable refresh behavior; HTTP route payload contracts remain unchanged.
+- [quickstart.md](quickstart.md) describes fixture-backed lifecycle, incremental refresh, the configured background cadence (seven-day default), retry/error classification, migration, and performance validation.
 
 ### Constitution Re-check
 
-- REST contract and configuration are documented without changing route response
-    shapes: **PASS**.
-- Provider ownership, errors, persistent-store readiness, observability, and
-    graceful shutdown remain explicit: **PASS**.
-- Indefinite retention requires removing automatic durable-store eviction and
-    accepting operator-managed disk growth: **PASS WITH DOCUMENTED OPERATIONAL
-    TRADEOFF**.
-- Performance and final security scans remain release acceptance gates:
-    **PASS**.
+- REST contract and configuration are documented without changing route response shapes: **PASS**.
+- Provider ownership, errors, persistent-store readiness, observability, and graceful shutdown remain explicit: **PASS**.
+- Indefinite retention requires removing automatic durable-store eviction and accepting operator-managed disk growth: **PASS WITH DOCUMENTED OPERATIONAL TRADEOFF**.
+- Performance and final security scans remain release acceptance gates: **PASS**.

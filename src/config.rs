@@ -2,6 +2,7 @@ use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
+    pub log_color: bool,
     pub listen_addr: SocketAddr,
     pub upstream_timeout: Duration,
     pub moex_iss_base_url: String,
@@ -25,6 +26,16 @@ impl AppConfig {
     fn from_lookup(
         mut get: impl FnMut(&str) -> Option<std::ffi::OsString>,
     ) -> Result<Self, String> {
+        let log_color = get("EXCHANGE_API_LOG_COLOR")
+            .and_then(|value| value.into_string().ok())
+            .map(|value| {
+                !matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "false" | "0" | "no" | "off"
+                )
+            })
+            .unwrap_or(true);
+
         let listen_addr = get("EXCHANGE_API_LISTEN_ADDR")
             .and_then(|value| value.into_string().ok())
             .ok_or(std::env::VarError::NotPresent)
@@ -156,6 +167,7 @@ impl AppConfig {
             .unwrap_or_else(|| PathBuf::from("/var/lib/exchange-api/history.sqlite3"));
 
         Ok(Self {
+            log_color,
             listen_addr,
             upstream_timeout: Duration::from_secs(timeout_seconds),
             moex_iss_base_url,
@@ -201,6 +213,27 @@ mod tests {
         assert!(config.moex_iss_base_url.contains("iss.moex.com"));
         assert!(config.spbex_api_base_url.contains("spbexchange.ru"));
         assert!(config.cbr_api_base_url.contains("cbr.ru"));
+    }
+
+    #[test]
+    fn log_color_setting_disables_only_for_supported_false_values() {
+        let default_config = AppConfig::from_lookup(|_| None).unwrap();
+        assert!(default_config.log_color);
+
+        for value in ["false", "FALSE", "0", "no", "No", "off", "OFF"] {
+            let values = HashMap::from([("EXCHANGE_API_LOG_COLOR", value)]);
+            let config = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap();
+            assert!(!config.log_color, "{value:?} should disable log coloring");
+        }
+
+        for value in ["true", "yes", "1", "", "unexpected"] {
+            let values = HashMap::from([("EXCHANGE_API_LOG_COLOR", value)]);
+            let config = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap();
+            assert!(
+                config.log_color,
+                "{value:?} should leave log coloring enabled"
+            );
+        }
     }
 
     #[test]

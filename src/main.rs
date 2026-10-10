@@ -8,8 +8,8 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_tracing();
     let config = AppConfig::from_env().map_err(std::io::Error::other)?;
+    init_tracing(config.log_color);
     let moex = MoexClient::with_limits(
         &config.moex_iss_base_url,
         config.upstream_timeout,
@@ -74,10 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn init_tracing() {
+fn init_tracing(log_color: bool) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_ansi(log_color))
         .init();
 }

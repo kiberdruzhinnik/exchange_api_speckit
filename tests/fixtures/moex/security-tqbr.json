@@ -1,1 +1,1 @@
-{"securities":{"columns":["SECID","BOARDID","LOTSIZE","FACEVALUE"],"data":[["SBER","TQBR",1,3]]}}
+{"securities":{"columns":["SECID","BOARDID","LOTSIZE","FACEVALUE"],"data":[["SBER","TQBR",1,3]]},"marketdata":{"columns":["SECID","BOARDID","NUMTRADES"],"data":[["SBER","TQBR",7]]}}

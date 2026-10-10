@@ -86,7 +86,7 @@ async fn serves_gldrub_tom_history_from_its_primary_currency_board() {
 }
 
 #[tokio::test]
-async fn serves_currency_quote_and_converts_lots_to_units() {
+async fn serves_currency_quote_with_fetch_time_trade_count() {
     let (_, app) = app().await;
     for path in ["/v1/moex/GLDRUB_TOM/quote", "/v2/quote/moex/GLDRUB_TOM"] {
         let response = app
@@ -100,7 +100,7 @@ async fn serves_currency_quote_and_converts_lots_to_units() {
             .unwrap();
         let rows: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(rows[0]["close"].as_f64(), Some(81.25));
-        assert_eq!(rows[0]["volume"].as_f64(), Some(3000.0));
+        assert_eq!(rows[0]["volume"].as_f64(), Some(7.0));
         assert!(rows[0]["date"].is_string());
         assert!(rows[0]["high"].is_null());
         assert!(rows[0]["low"].is_null());
@@ -150,6 +150,93 @@ async fn returns_empty_currency_history_and_all_null_quote_when_no_trade_exists(
         serde_json::from_slice::<Value>(&quote_body).unwrap(),
         serde_json::json!([{"date":null,"close":null,"high":null,"low":null,"volume":null,"facevalue":null}])
     );
+}
+
+#[tokio::test]
+async fn currency_quote_leaves_volume_null_when_numtrades_is_unavailable() {
+    let (_, app) = app_with(
+        fixture("history"),
+        200,
+        r#"{"securities":{"columns":["LOTSIZE"],"data":[[1000]]},"marketdata":{"columns":["LAST","TIME","QTY"],"data":[[81.25,"12:34:56",3]]}}"#,
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let rows: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(rows[0]["close"].as_f64(), Some(81.25));
+    assert!(rows[0]["volume"].is_null());
+}
+
+#[tokio::test]
+async fn malformed_currency_quote_time_returns_dependency_error() {
+    let (_, app) = app_with(
+        fixture("history"),
+        200,
+        r#"{"securities":{"columns":["LOTSIZE"],"data":[[1000]]},"marketdata":{"columns":["LAST","TIME","NUMTRADES"],"data":[[81.25,"not-a-time",7]]}}"#,
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn malformed_non_null_currency_last_returns_dependency_error() {
+    let (_, app) = app_with(
+        fixture("history"),
+        200,
+        r#"{"securities":{"columns":["LOTSIZE"],"data":[[1000]]},"marketdata":{"columns":["LAST","TIME","NUMTRADES"],"data":[["bad","12:34:56",7]]}}"#,
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn malformed_non_null_currency_history_value_returns_dependency_error() {
+    let history = r#"{"history":{"columns":["BOARDID","TRADEDATE","CLOSE","HIGH","LOW"],"data":[["CETS","2026-10-01","bad",81,79]]},"history.cursor":{"columns":["INDEX","TOTAL","PAGESIZE"],"data":[[0,1,100]]}}"#;
+    let (_, app) = app_with(
+        history,
+        200,
+        r#"{"marketdata":{"columns":["LAST","TIME","NUMTRADES"],"data":[]}}"#,
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/GLDRUB_TOM")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 }
 
 #[tokio::test]

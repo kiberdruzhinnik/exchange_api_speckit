@@ -14,6 +14,45 @@ use wiremock::{
 const METADATA: &str = r#"{"boards":{"columns":["ENGINE","MARKET","BOARDID","IS_PRIMARY","HISTORY_FROM","HISTORY_TILL"],"data":[["stock","index","SNDX",1,"2000-01-01","9999-12-31"]]}}"#;
 const HISTORY: &str = r#"{"history":{"columns":["BOARDID","TRADEDATE","CLOSE","HIGH","LOW","VOLUME"],"data":[["SNDX","2026-10-02",101,102,99,0]]},"history.cursor":{"columns":["INDEX","TOTAL","PAGESIZE"],"data":[[0,1,100]]}}"#;
 
+#[tokio::test]
+async fn quote_with_no_primary_board_today_returns_no_quote_without_marketdata_fetch() {
+    let server = MockServer::start().await;
+    let today = chrono::Utc::now()
+        .with_timezone(&chrono_tz::Europe::Moscow)
+        .date_naive();
+    let yesterday = today.pred_opt().unwrap();
+    let metadata = format!(
+        r#"{{"boards":{{"columns":["ENGINE","MARKET","BOARDID","IS_PRIMARY","HISTORY_FROM","HISTORY_TILL"],"data":[["stock","index","SNDX",1,"2000-01-01","{yesterday}"]]}}}}"#
+    );
+    Mock::given(method("GET"))
+        .and(path("/securities/IMOEX.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(metadata))
+        .mount(&server)
+        .await;
+    let client = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(2)).unwrap();
+    let app = router(AppState::new(client));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/IMOEX/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+        serde_json::json!([{"date":null,"close":null,"high":null,"low":null,"volume":null,"facevalue":null}])
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].url.path(), "/securities/IMOEX.json");
+}
+
 fn record(date: &str, close: f64) -> exchange_api::domain::DailyMarketRecord {
     exchange_api::domain::DailyMarketRecord {
         date: chrono::DateTime::parse_from_rfc3339(date)

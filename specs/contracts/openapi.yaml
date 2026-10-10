@@ -61,7 +61,7 @@ paths:
     get:
       operationId: getMoexTickerLatestTrade
       summary: Get the current value for a MOEX instrument
-      description: Fetches current data for each request and returns one history-shaped record. Equities and currency-market instruments represent the latest executed trade; indices represent the latest non-null published CURRENTVALUE, falling back to LASTVALUE. A successful response with no trade or published value returns one all-null record. Quote responses are not cached.
+      description: Fetches current data for each request and returns one history-shaped record. Equities and currency-market instruments use the latest trade date and price, while `volume` reports the fetch-time `NUMTRADES` count rather than the latest trade quantity. Indices represent the latest non-null published CURRENTVALUE, falling back to LASTVALUE. A successful response with no trade or published value returns one all-null record. Quote responses are not cached.
       parameters:
         - $ref: '#/components/parameters/MoexSymbol'
       responses:
@@ -98,7 +98,7 @@ paths:
                       close: 81.25
                       high: null
                       low: null
-                      volume: 3000
+                      volume: 42
                       facevalue: null
         '400':
           $ref: '#/components/responses/InvalidSymbol'

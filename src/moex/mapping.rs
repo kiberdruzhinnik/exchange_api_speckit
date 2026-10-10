@@ -9,6 +9,15 @@ pub fn map_history(
     facevalue: Option<f64>,
     board: Option<&str>,
 ) -> anyhow::Result<Vec<DailyMarketRecord>> {
+    map_history_with_numeric_validation(value, facevalue, board, false)
+}
+
+pub fn map_history_with_numeric_validation(
+    value: &Value,
+    facevalue: Option<f64>,
+    board: Option<&str>,
+    validate_numeric_values: bool,
+) -> anyhow::Result<Vec<DailyMarketRecord>> {
     let table = IssTable::parse(value)?;
     let date = table.index("TRADEDATE")?;
     let board_idx = table.columns.iter().position(|c| c == "BOARDID");
@@ -38,13 +47,35 @@ pub fn map_history(
             }
         }
         let timestamp = Utc.from_utc_datetime(&day.and_hms_opt(0, 0, 0).unwrap());
-        let number = |index: Option<usize>| index.and_then(|i| row.get(i)?.as_f64());
+        let number = |index: Option<usize>, field: &str| -> anyhow::Result<Option<f64>> {
+            let Some(value) = index.and_then(|index| row.get(index)) else {
+                return Ok(None);
+            };
+            if value.is_null() {
+                return Ok(None);
+            }
+            let parsed = if validate_numeric_values {
+                value
+                    .as_f64()
+                    .or_else(|| value.as_str()?.parse::<f64>().ok())
+                    .filter(|number| number.is_finite())
+            } else {
+                value.as_f64()
+            };
+            match parsed {
+                Some(number) => Ok(Some(number)),
+                None if validate_numeric_values => {
+                    anyhow::bail!("MOEX history has invalid {field} value")
+                }
+                None => Ok(None),
+            }
+        };
         records.push(DailyMarketRecord {
             date: timestamp,
-            close: number(close),
-            high: number(high),
-            low: number(low),
-            volume: number(volume),
+            close: number(close, "CLOSE")?,
+            high: number(high, "HIGH")?,
+            low: number(low, "LOW")?,
+            volume: number(volume, "VOLUME")?,
             facevalue,
         });
     }
@@ -80,7 +111,31 @@ pub fn map_latest_trade(value: &Value) -> anyhow::Result<LatestQuoteRecord> {
         close: Some(trade.price),
         high: None,
         low: None,
-        volume: Some(trade.quantity),
+        // Quote volume is populated from current marketdata's NUMTRADES.
+        volume: None,
         facevalue: None,
     })
+}
+
+pub fn current_trade_count(value: &Value) -> anyhow::Result<Option<f64>> {
+    let table = IssTable::parse(&value["marketdata"])?;
+    let Some(index) = table
+        .columns
+        .iter()
+        .position(|column| column.eq_ignore_ascii_case("NUMTRADES"))
+    else {
+        return Ok(None);
+    };
+    let Some(row) = table.data.first() else {
+        return Ok(None);
+    };
+    let Some(value) = row.get(index).filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    value
+        .as_f64()
+        .or_else(|| value.as_str()?.parse::<f64>().ok())
+        .filter(|number| number.is_finite())
+        .map(Some)
+        .ok_or_else(|| anyhow::anyhow!("invalid MOEX NUMTRADES value"))
 }

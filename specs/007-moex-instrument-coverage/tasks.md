@@ -68,12 +68,12 @@
 
 ### Tests for User Story 2
 
-- [X] T016 [P] [US2] Add representative GLDRUB_TOM security metadata, CETS history, and currency current-marketdata fixtures in `tests/fixtures/moex/gldrub_tom-security.json`, `tests/fixtures/moex/gldrub_tom-history.json`, and `tests/fixtures/moex/gldrub_tom-marketdata.json`.
-- [X] T017 [P] [US2] Add fixture-backed metadata preflight, current-marketdata request, CETS board selection, history/quote mapping, v1/v2 route, empty-data, and dependency-error tests in `tests/moex_currency.rs`, including LOTSIZE data.
+- [X] T016 [P] [US2] Add representative GLDRUB_TOM security metadata, CETS history, and currency current-marketdata fixtures in `tests/fixtures/moex/gldrub_tom-security.json`, `tests/fixtures/moex/gldrub_tom-history.json`, and `tests/fixtures/moex/gldrub_tom-marketdata.json`; set `NUMTRADES` different from `QTY` so quote volume mapping is independently verifiable.
+- [X] T017 [P] [US2] Add fixture-backed metadata preflight, current-marketdata request, CETS board selection, history mapping, v1/v2 quote route, empty-data, and dependency-error tests in `tests/moex_currency.rs`; assert quote `volume` equals fixture `NUMTRADES` even when `QTY` and LOTSIZE imply a different value.
 
 ### Implementation for User Story 2
 
-- [X] T018 [US2] Implement currency-market history and quote mapping in `src/moex/currency.rs`: map available OHLC fields and leave absent `VOLUME` null; map `LAST`, `TIME`, and `QTY`; convert `QTY` lots to instrument units using LOTSIZE; normalize the timestamp to UTC.
+- [X] T018 [US2] Implement currency-market history and quote mapping in `src/moex/currency.rs`: map available OHLC fields and leave absent daily `VOLUME` null; map quote `LAST` and `TIME`, and set quote `volume` from fetch-time `NUMTRADES`, not `QTY`; normalize the timestamp to UTC.
 - [X] T019 [US2] Register the currency mapping module in `src/moex/mod.rs` and integrate currency-market history and current-marketdata branches in `src/moex/provider.rs`; select the primary board such as CETS rather than mixing CNGD or LICU rows, and leave quote requests uncached after T015.
 
 **Checkpoint**: GLDRUB_TOM history and quote are independently usable over v1/v2 without affecting index handling.
@@ -88,28 +88,37 @@
 
 ### Tests for User Story 3
 
-- [X] T020 [P] [US3] Add SBER regression coverage for shares history, latest-trade quote, invalid symbols, and upstream failures in `tests/api_moex.rs`.
+- [X] T020 [P] [US3] Add SBER regression coverage in `tests/api_moex.rs` and `tests/api_quote.rs` for shares history, latest-trade date/price, and invalid symbols/upstream failures; use a fixture where trade quantity differs from fetch-time `NUMTRADES` and assert equity quote `volume` equals `NUMTRADES`.
 
 ### Implementation for User Story 3
 
-- [X] T021 [US3] Preserve existing shares-market paths, trade timestamp mapping, LOTSIZE selection, and error behavior in `src/moex/provider.rs`, `src/moex/client.rs`, and `src/moex/mapping.rs` while using shared market context.
+- [X] T021 [US3] Preserve existing shares-market paths, trade timestamp and price mapping, LOTSIZE history behavior, and error behavior; fetch current primary-board marketdata alongside the latest trade and map quote `volume` from fetch-time `NUMTRADES` (null if unavailable) in `src/moex/provider.rs`, `src/moex/client.rs`, and `src/moex/mapping.rs`.
 
 **Checkpoint**: Existing MOEX equity consumers retain the same routes, response shape, and documented outcomes.
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 6: Validate Board Metadata
+
+**Purpose**: Reject unusable primary-board date assignments before the feature's final validation and release checks.
+
+- [X] T022 Validate primary-board effective-date intervals in `src/moex/board.rs`: require valid dates and `primary_from <= primary_through` when an end exists; treat both endpoints as inclusive; allow gaps and open-ended ends; reject any overlap between primary-board intervals as unusable metadata and map it to the standard MOEX dependency error in `src/moex/provider.rs`, per FR-014.
+- [X] T023 Add fixture-backed metadata and route tests in `tests/moex_mapping.rs` and `tests/api_moex.rs` proving invalid dates, reversed intervals, and overlapping primary-board intervals return the standard MOEX dependency error; gaps and open-ended intervals are accepted; and board selection includes records on both `primary_from` and `primary_through`, per FR-014 and Constitution V.
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
 
 **Purpose**: Align published documentation, run security analysis before final validation, and satisfy project-level quality gates.
 
-- [X] T022 Update canonical MOEX history and quote descriptions in `specs/contracts/openapi.yaml` with index/currency examples, current-value versus latest-trade quote semantics, nullable fields, symbol validation, unrecognized-symbol errors, metadata dependency errors, and unchanged response schemas.
-- [X] T023 Align runnable fixture and live validation scenarios in `specs/007-moex-instrument-coverage/quickstart.md` with fixture names, metadata preflight ordering/reuse, no-migration error cases, quote request paths, first-request migration and merge behavior, and API outcomes.
-- [X] T024 Run the fixture-backed Rust test commands documented in `specs/007-moex-instrument-coverage/quickstart.md`; resolve failures in `tests/` and `src/moex/` before security analysis.
-- [X] T025 Run Semgrep source analysis on `src/moex/` after implementation fixes and resolve all findings before final validation.
-- [X] T026 Rerun the fixture-backed Rust suite and the functional API scenarios documented in `specs/007-moex-instrument-coverage/quickstart.md` after Semgrep fixes; resolve any regressions in `tests/` and `src/moex/`. Leave live-service checks and performance measurement to their separately scoped validation tasks.
-- [X] T027 Measure the 10-client, 10-request-per-second MOEX history and quote profile after code changes are final, and record per-route outcomes in `specs/007-moex-instrument-coverage/quickstart.md`.
-- [X] T028 Build the Linux amd64 deliverable from `Dockerfile` after source and performance validation; record the result in `specs/007-moex-instrument-coverage/quickstart.md`.
-- [X] T029 Run Trivy against the image built from `Dockerfile` and resolve available High or Critical findings; record any unfixable findings and affected artifact in `specs/007-moex-instrument-coverage/quickstart.md`.
+- [X] T024 Update canonical MOEX history and quote descriptions in `specs/contracts/openapi.yaml` with index/currency examples, fetch-time `NUMTRADES` quote-volume semantics for equities and currencies, nullable fields, symbol validation, error behavior, and unchanged response schemas.
+- [X] T025 Align runnable fixture and live validation scenarios in `specs/007-moex-instrument-coverage/quickstart.md` with fixture names, metadata preflight ordering/reuse, no-migration error cases, quote request paths, fetch-time trade-count quote volume, first-request migration/merge behavior, and API outcomes.
+- [X] T026 Run the fixture-backed Rust test commands documented in `specs/007-moex-instrument-coverage/quickstart.md`; resolve failures in `tests/` and `src/moex/` before security analysis.
+- [X] T027 Run Semgrep source analysis on `src/moex/` after implementation fixes and resolve all findings before final validation.
+- [X] T028 Rerun the fixture-backed Rust suite and the functional API scenarios documented in `specs/007-moex-instrument-coverage/quickstart.md` after Semgrep fixes; resolve any regressions in `tests/` and `src/moex/`. Leave live-service checks and performance measurement to their separately scoped validation tasks.
+- [X] T029 Measure the 10-client, 10-request-per-second MOEX history and quote profile after code changes are final, and record per-route outcomes in `specs/007-moex-instrument-coverage/quickstart.md`.
+- [X] T030 Build the Linux amd64 deliverable from `Dockerfile` after source and performance validation; record the result in `specs/007-moex-instrument-coverage/quickstart.md`.
+- [X] T031 Run Trivy against the image built from `Dockerfile` and resolve available High or Critical findings; record any unfixable findings and affected artifact in `specs/007-moex-instrument-coverage/quickstart.md`.
 
 ---
 
@@ -120,7 +129,8 @@
 - **Setup (Phase 1)**: No project initialization changes are required.
 - **Foundational (Phase 2)**: T001 precedes importer changes T002–T003. T004–T005 define API and validation expectations before implementation. T006–T009 provide the preflight contract and shared context/client support; T010 implements MOEX recognition and context reuse; T011 then orders preflight, migration, collection lookup, and history retrieval.
 - **User Stories (Phases 3–5)**: Start after Phase 2. IMOEX and currency fixtures/tests can be developed in parallel. Provider integration tasks T015 and T019 share `src/moex/provider.rs` and `src/moex/mod.rs`, so apply them sequentially.
-- **Polish (Phase 6)**: Run the initial suite T024, then Semgrep T025, then the final suite T026 so any Semgrep fixes are covered. Run performance T027 and image build T028 only after source changes are complete; Trivy T029 depends on T028.
+- **Board metadata validation (Phase 6)**: T022 implements interval validation; T023 adds fixtures and route coverage. Both must finish before final validation.
+- **Polish (Phase 7)**: Run the initial suite T026, then Semgrep T027, then the final suite T028 so any Semgrep fixes are covered. Run performance T029 and image build T030 only after source changes are complete; Trivy T031 depends on T030.
 
 ### User Story Dependencies
 
@@ -148,6 +158,12 @@ After Phase 2:
 Workstream A: T012 -> T013 -> T014 -> T015 (IMOEX)
 Workstream B: T016 -> T017 -> T018 (GLDRUB_TOM)
 Integrate T019 after T015 to avoid simultaneous edits to src/moex/mod.rs and src/moex/provider.rs.
+
+## Phase 8: Convergence
+
+- [X] T032 Reject currency quote rows with a valid `LAST` but malformed `TIME` as unusable upstream data and add fixture-backed coverage in `src/moex/currency.rs` and `tests/moex_currency.rs`, per FR-006 and FR-009 (partial).
+- [X] T033 Return the established all-null no-quote record when no primary-board interval covers the request date; remove the fallback to a historical board and add a quote test for an allowed metadata gap in `src/moex/provider.rs` and `tests/api_moex.rs`, per FR-007, plan: current quote board selection, and T019 (contradicts).
+
 ```
 
 ## Implementation Strategy
@@ -169,10 +185,14 @@ User Story 1 delivers the benchmark slice after the shared foundation. It is the
 - `[P]` means a task has no dependency on other incomplete tasks and changes a distinct file.
 - User-story labels map to the P1/P2 stories in `specs/007-moex-instrument-coverage/spec.md`.
 
-## Phase 7: Convergence
+## Phase 9: Convergence
 
-- [X] T030 Reject malformed or overlapping primary-board effective-date intervals during metadata resolution and map unusable assignments to the MOEX dependency error, per FR-009 and plan: effective board dates (partial).
+- [X] T034 Reject index quote rows with a valid published value but a present malformed update timestamp as unusable upstream data, and add fixture-backed coverage in `src/moex/index.rs` and `tests/moex_index.rs`, per FR-009 and T014 (partial).
 
-## Phase 8: Convergence
+## Phase 10: Convergence
 
-- [X] T031 Add fixture-backed metadata and route tests proving malformed, inverted, and overlapping primary-board effective-date intervals return the standard MOEX dependency error, per FR-009 and Constitution V (partial).
+- [X] T035 Reject malformed non-null `CURRENTVALUE`/`LASTVALUE` and currency `LAST` quote values as unusable upstream data while preserving null as no value; add fixture-backed coverage in `src/moex/index.rs`, `src/moex/currency.rs`, `tests/moex_index.rs`, and `tests/moex_currency.rs`, per FR-009, plan: malformed source data, T014, and T018 (partial).
+
+## Phase 11: Convergence
+
+- [X] T036 Reject malformed non-null OHLC and available volume values in index/currency history rows as unusable upstream data while preserving absent or null fields; add fixture-backed coverage in `src/moex/mapping.rs`, `tests/moex_index.rs`, and `tests/moex_currency.rs`, per FR-009, plan: malformed source data, T014, and T018 (partial).

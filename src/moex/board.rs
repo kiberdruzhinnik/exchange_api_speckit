@@ -136,14 +136,11 @@ pub fn resolve_instrument(value: &serde_json::Value) -> anyhow::Result<Option<Re
         if !is_primary {
             continue;
         }
-        let history_from = effective_date(
-            from.and_then(|index| row.get(index)),
-            "0001-01-01",
-            "history_from",
-        )?;
+        let history_from =
+            effective_date(from.and_then(|index| row.get(index)), None, "history_from")?;
         let history_till = effective_date(
             till.and_then(|index| row.get(index)),
-            "9999-12-31",
+            Some("9999-12-31"),
             "history_till",
         )?;
         let start = NaiveDate::parse_from_str(&history_from, "%Y-%m-%d")
@@ -188,11 +185,13 @@ pub fn resolve_instrument(value: &serde_json::Value) -> anyhow::Result<Option<Re
 
 fn effective_date(
     value: Option<&serde_json::Value>,
-    default: &str,
+    default: Option<&str>,
     field: &str,
 ) -> anyhow::Result<String> {
     let Some(value) = value.filter(|value| !value.is_null()) else {
-        return Ok(default.to_owned());
+        return default
+            .map(str::to_owned)
+            .ok_or_else(|| anyhow::anyhow!("MOEX {field} is required"));
     };
     let date = value
         .as_str()

@@ -59,7 +59,11 @@ fn chooses_primary_board_that_applied_on_each_trading_date() {
     let listings = fixture("board-change");
     let boards = primary_board_by_date(&listings).unwrap();
     assert_eq!(board_on_date(&boards, "2012-12-28"), Some("EQBR"));
+    assert_eq!(board_on_date(&boards, "2010-01-01"), Some("EQBR"));
+    assert_eq!(board_on_date(&boards, "2012-12-31"), Some("EQBR"));
+    assert_eq!(board_on_date(&boards, "2013-01-01"), Some("TQBR"));
     assert_eq!(board_on_date(&boards, "2013-01-03"), Some("TQBR"));
+    assert_eq!(board_on_date(&boards, "2026-12-31"), Some("TQBR"));
     let rows = serde_json::json!({
         "columns": ["BOARDID", "TRADEDATE", "CLOSE", "HIGH", "LOW", "VOLUME"],
         "data": [["EQBR", "2012-12-28", 10, 11, 9, 100], ["TQBR", "2013-01-03", 20, 21, 19, 200]]
@@ -77,6 +81,34 @@ fn chooses_primary_board_that_applied_on_each_trading_date() {
         );
     }
     assert_eq!(selected.len(), 2);
+}
+
+#[test]
+fn accepts_gaps_and_open_ended_primary_board_intervals() {
+    let metadata = serde_json::json!({
+        "boards": {
+            "columns": ["ENGINE", "MARKET", "BOARDID", "IS_PRIMARY", "HISTORY_FROM", "HISTORY_TILL"],
+            "data": [
+                ["stock", "index", "OLD", 1, "2020-01-01", "2020-01-31"],
+                ["stock", "index", "NEW", 1, "2020-02-02", null]
+            ]
+        }
+    });
+    let instrument = resolve_instrument(&metadata).unwrap().unwrap();
+    let intervals = instrument
+        .boards
+        .iter()
+        .map(|item| {
+            (
+                item.board.clone(),
+                item.history_from.clone(),
+                item.history_till.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(board_on_date(&intervals, "2020-02-01"), None);
+    assert_eq!(board_on_date(&intervals, "2020-02-02"), Some("NEW"));
+    assert_eq!(board_on_date(&intervals, "9999-12-31"), Some("NEW"));
 }
 
 #[test]
@@ -99,7 +131,7 @@ fn parses_quote_and_preserves_exact_history_shaped_fields() {
         "2026-10-08T08:41:57+00:00"
     );
     assert_eq!(trade.close, Some(280.34));
-    assert_eq!(trade.volume, Some(1.0));
+    assert_eq!(trade.volume, None);
     assert_eq!(trade.high, None);
     assert_eq!(trade.low, None);
     assert_eq!(trade.facevalue, None);

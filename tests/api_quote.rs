@@ -30,6 +30,15 @@ async fn quote_app(trades: &'static str) -> (MockServer, axum::Router) {
         .respond_with(ResponseTemplate::new(200).set_body_string(trades))
         .mount(&server)
         .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/engines/stock/markets/shares/boards/TQBR/securities/SBER.json",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"securities":{"columns":["LOTSIZE"],"data":[[1]]},"marketdata":{"columns":["NUMTRADES"],"data":[[7]]}}"#,
+        ))
+        .mount(&server)
+        .await;
     let client = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(2)).unwrap();
     (server, router(AppState::new(client)))
 }
@@ -55,12 +64,12 @@ async fn returns_latest_trade_as_one_history_shaped_record_and_fetches_each_time
         assert_eq!(value.as_array().unwrap().len(), 1);
         assert_eq!(value[0]["date"], "2026-10-08T08:41:57Z");
         assert_eq!(value[0]["close"], 280.34);
-        assert_eq!(value[0]["volume"].as_f64(), Some(1.0));
+        assert_eq!(value[0]["volume"].as_f64(), Some(7.0));
         assert!(value[0]["high"].is_null());
         assert!(value[0]["low"].is_null());
         assert!(value[0]["facevalue"].is_null());
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 6);
+    assert_eq!(server.received_requests().await.unwrap().len(), 9);
 }
 
 #[tokio::test]

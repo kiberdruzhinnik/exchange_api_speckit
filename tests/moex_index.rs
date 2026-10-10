@@ -158,3 +158,70 @@ async fn maps_index_current_marketdata_failure_to_dependency_error() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 }
+
+#[tokio::test]
+async fn index_quote_with_malformed_present_timestamp_returns_dependency_error() {
+    let (_, app) = app_with(
+        fixture("history"),
+        200,
+        r#"{"marketdata":{"columns":["CURRENTVALUE","LASTVALUE","SYSTIME"],"data":[[3215.5,3210.0,"not-a-time"]]}}"#,
+    )
+    .await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/moex/IMOEX/quote")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn malformed_non_null_index_values_return_dependency_errors() {
+    let cases = [
+        r#"{"marketdata":{"columns":["CURRENTVALUE","LASTVALUE"],"data":[["bad",3210.0]]}}"#,
+        r#"{"marketdata":{"columns":["CURRENTVALUE","LASTVALUE"],"data":[[null,"bad"]]}}"#,
+    ];
+    for marketdata in cases {
+        let (_, app) = app_with(fixture("history"), 200, marketdata).await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/moex/IMOEX/quote")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+}
+
+#[tokio::test]
+async fn malformed_non_null_index_history_values_return_dependency_errors() {
+    let cases = [
+        r#"{"history":{"columns":["BOARDID","TRADEDATE","CLOSE","HIGH","LOW","VOLUME"],"data":[["SNDX","2026-10-01","bad",3210,3190,0]]},"history.cursor":{"columns":["INDEX","TOTAL","PAGESIZE"],"data":[[0,1,100]]}}"#,
+        r#"{"history":{"columns":["BOARDID","TRADEDATE","CLOSE","HIGH","LOW","VOLUME"],"data":[["SNDX","2026-10-01",3200,3210,3190,"bad"]]},"history.cursor":{"columns":["INDEX","TOTAL","PAGESIZE"],"data":[[0,1,100]]}}"#,
+    ];
+    for history in cases {
+        let (_, app) = app_with(
+            history,
+            200,
+            r#"{"marketdata":{"columns":["CURRENTVALUE"],"data":[]}}"#,
+        )
+        .await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/moex/IMOEX")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+}

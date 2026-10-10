@@ -3,7 +3,7 @@ use crate::{
     moex::{
         board::{board_on_date, resolve_instrument},
         client::MoexClient,
-        mapping::{lotsize, map_history, map_latest_trade},
+        mapping::{current_trade_count, lotsize, map_history, map_latest_trade},
         models::{InstrumentCategory, ResolvedInstrument},
         validation::validate_symbol,
     },
@@ -76,12 +76,23 @@ impl ExchangeProvider for MoexProvider {
 
     async fn quote(&self, symbol: &str) -> Result<LatestQuoteRecord, ProviderError> {
         let context = self.resolve(symbol).await?;
-        let board = current_assignment(&context).ok_or(ProviderError::InvalidSymbol)?;
+        let Some(board) = current_assignment(&context) else {
+            return Ok(LatestQuoteRecord::no_trade());
+        };
         match context.category {
             InstrumentCategory::Shares => {
-                let value = self.0.latest_trade(symbol).await.map_err(map_error)?;
-                let quote = map_latest_trade(&value)
+                let (trades, marketdata) = tokio::try_join!(
+                    self.0.latest_trade(symbol),
+                    self.0
+                        .current_marketdata(symbol, &board.engine, &board.market, &board.board),
+                )
+                .map_err(map_error)?;
+                let mut quote = map_latest_trade(&trades)
                     .map_err(|error| ProviderError::InvalidData(error.to_string()))?;
+                if quote.close.is_some() {
+                    quote.volume = current_trade_count(&marketdata)
+                        .map_err(|error| ProviderError::InvalidData(error.to_string()))?;
+                }
                 Ok(quote)
             }
             InstrumentCategory::Index | InstrumentCategory::Currency => {
@@ -90,17 +101,11 @@ impl ExchangeProvider for MoexProvider {
                     .current_marketdata(symbol, &board.engine, &board.market, &board.board)
                     .await
                     .map_err(map_error)?;
-                let lotsize = if context.category == InstrumentCategory::Currency {
-                    lotsize(&value)
-                        .map_err(|error| ProviderError::InvalidData(error.to_string()))?
-                } else {
-                    None
-                };
                 if context.category == InstrumentCategory::Index {
                     crate::moex::index::map_quote(&value)
                         .map_err(|error| ProviderError::InvalidData(error.to_string()))
                 } else {
-                    crate::moex::currency::map_quote(&value, lotsize)
+                    crate::moex::currency::map_quote(&value)
                         .map_err(|error| ProviderError::InvalidData(error.to_string()))
                 }
             }
@@ -129,14 +134,10 @@ fn current_assignment(
         .date_naive()
         .format("%Y-%m-%d")
         .to_string();
-    context
-        .boards
-        .iter()
-        .find(|board| {
-            board.history_from.as_str() <= today.as_str()
-                && today.as_str() <= board.history_till.as_str()
-        })
-        .or_else(|| context.boards.last())
+    context.boards.iter().find(|board| {
+        board.history_from.as_str() <= today.as_str()
+            && today.as_str() <= board.history_till.as_str()
+    })
 }
 
 async fn fetch_history(

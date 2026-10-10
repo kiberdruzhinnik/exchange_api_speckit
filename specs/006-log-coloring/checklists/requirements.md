@@ -1,6 +1,7 @@
 # Specification Quality Checklist: Configurable Log Coloring
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning
+**Purpose**: Validate specification completeness and quality before proceeding
+to planning
 **Created**: 2026-10-10
 **Feature**: [spec.md](../spec.md)
 
@@ -31,4 +32,5 @@
 
 ## Notes
 
-- Checklist reviewed against the completed specification; no outstanding quality issues found.
+- Checklist reviewed against the completed specification; no outstanding quality
+    issues found.

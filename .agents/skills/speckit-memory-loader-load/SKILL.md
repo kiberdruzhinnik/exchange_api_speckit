@@ -1,6 +1,7 @@
 ---
 name: speckit-memory-loader-load
-description: Read all project memory files and output their contents for LLM context
+description: Read all project memory files and output their contents for LLM
+context
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: KevinBrown5280
@@ -9,7 +10,9 @@ metadata:
 
 # Load Project Memory
 
-Read ALL `.md` files in `.specify/memory/` and output their contents. This gives you project governance context (constitution, glossary, conventions, resource standards) for the command that follows.
+Read ALL `.md` files in `.specify/memory/` and output their contents. This gives
+you project governance context (constitution, glossary, conventions, resource
+standards) for the command that follows.
 
 ## Steps
 
@@ -19,7 +22,7 @@ Read ALL `.md` files in `.specify/memory/` and output their contents. This gives
 
 2. **Output**: For each file, print a headed section:
 
-   ```
+   ```text
    ## Memory: {filename}
    
    {file contents}
@@ -27,12 +30,14 @@ Read ALL `.md` files in `.specify/memory/` and output their contents. This gives
 
 3. **Summarize**: After all files, output:
 
-   ```
+   ```text
    Context loaded: {memory_count} memory files
    ```
 
 ## Usage Notes
 
-- Designed as a mandatory `before_*` hook that fires before spec-kit lifecycle commands.
-- Loads governance context only. Feature-specific reference docs are loaded by the `spec-reference-loader` extension.
+- Designed as a mandatory `before_*` hook that fires before spec-kit lifecycle
+    commands.
+- Loads governance context only. Feature-specific reference docs are loaded by
+    the `spec-reference-loader` extension.
 - This is a read-only operation — do NOT modify any files.

@@ -4,21 +4,24 @@
 > **Revision**: 2026-10-09 — Archived MOEX history and quote behavior, mappings, validation, and shutdown requirements; kept the indefinite date-keyed history model after resolving the legacy storage conflict in favor of the current plan.
 > **Revision**: 2026-10-09 — Archived CBR history and latest-official-rate behavior, XML source mapping, shared-provider contract, and configuration requirements; retained the established indefinite durable-history model.
 > **Revision**: 2026-10-10 — Archived provider-qualified v2 history and quote routes, retained v1 compatibility, and the cache-populated latency acceptance criterion.
+> **Revision**: 2026-10-10 — Added v2 availability with default refresh settings and the corresponding unset-settings acceptance scenarios.
+> **Revision**: 2026-10-10 — Archived configurable process-wide log coloring, its startup configuration contract, and output acceptance criteria.
 
-**Status:** Current system requirements, consolidated from the MOEX, SPBEX, and CBR feature specifications.  
+**Status:** Current system requirements, consolidated from the MOEX, SPBEX, CBR, and log-coloring feature specifications.
 **Scope:** The six provider-specific v1 routes, six provider-qualified v2 routes, and shared service behavior.
 
-The archived feature task lists are fully checked, and their feature specs are sealed. The historical feature specs are preserved unchanged.
+The archived feature task lists are complete, and feature specs are marked Completed. Their content is preserved; archival may finalize Draft status metadata.
 
 ## Shared REST Contract
 
 - **SHARED-FR-001** *(MOEX FR-001, FR-003; SPBEX FR-001, FR-003, FR-007; CBR FR-020, FR-021)*: The API MUST expose `GET /v1/{provider}/{SYMBOL}` and `GET /v1/{provider}/{SYMBOL}/quote` for `moex`, `spbex`, and `cbr`, and the additive `GET /v2/history/{PROVIDER}/{SYMBOL}` and `GET /v2/quote/{PROVIDER}/{SYMBOL}` routes for those same providers. All success records MUST use exactly `date`, `close`, `high`, `low`, `volume`, and `facevalue` in JSON arrays. History responses MUST contain the complete retained history, including newly fetched records, ordered according to the provider contract. [Source: specs/004-history-cache-refresh/spec.md -> FR-006] [Source: specs/001-moex-ticker-update/spec.md -> FR-001, FR-003] [Source: specs/002-spbex-ticker-update/spec.md -> FR-001, FR-003, FR-007] [Source: specs/003-cbr-currency-rates/spec.md -> FR-020, FR-021] [Source: specs/005-v2-history-quote-api/spec.md -> FR-001, FR-002, FR-004, FR-005]
 - **SHARED-FR-025**: V2 requests MUST use the provider path segment, exactly `moex`, `spbex`, or `cbr`, to select that provider's behavior; unsupported provider values MUST return HTTP 400 with the shared `invalid_provider` error envelope and MUST NOT fall through to another provider. [Source: specs/005-v2-history-quote-api/spec.md -> FR-003] [Source: specs/005-v2-history-quote-api/data-model.md -> Provider Selector]
 - **SHARED-FR-026**: Existing provider-specific v1 history and quote routes MUST remain available with their existing behavior alongside the v2 routes. [Source: specs/005-v2-history-quote-api/spec.md -> FR-007]
+- **SHARED-FR-028**: V2 history and quote routes MUST remain registered when `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are unset; those settings default to 604800 seconds and 900 seconds, respectively, and MUST NOT control route availability. [Source: specs/005-v2-history-quote-api/spec.md -> FR-008] [Source: specs/005-v2-history-quote-api/plan.md -> "Constraints"]
 - **SHARED-FR-002** *(MOEX FR-008; SPBEX FR-010; CBR FR-003, FR-012, FR-022)*: Providers MUST trim surrounding whitespace and uppercase symbols before validation. Malformed or unsupported symbols MUST return HTTP 400 with `{"error":{"code":"invalid_symbol","message":"..."}}`. SPBEX successful empty feeds MUST NOT be treated as unsupported symbols; an explicit upstream rejection may return HTTP 400. CBR symbols MUST be validated against its currently supported-currency directory. [Source: specs/001-moex-ticker-update/spec.md -> FR-008] [Source: specs/002-spbex-ticker-update/spec.md -> FR-010] [Source: specs/003-cbr-currency-rates/spec.md -> FR-003, FR-012]
 - **SHARED-FR-003** *(MOEX FR-009; SPBEX FR-011, FR-015; CBR FR-013, FR-015, FR-022, FR-024)*: Upstream failures or unusable upstream data MUST return HTTP 502 in the shared error envelope, retaining the existing route-specific codes `moex_unavailable`, `spbex_unavailable`, or `cbr_unavailable`. History-store failures MUST return HTTP 503 with `history_store_unavailable` in the same envelope. Failed user-request refreshes MUST NOT report stale cached data as a successful refresh. [Source: specs/004-history-cache-refresh/spec.md -> FR-008] [Source: specs/004-history-cache-refresh/spec.md -> FR-010] [Source: specs/001-moex-ticker-update/spec.md -> FR-009] [Source: specs/002-spbex-ticker-update/spec.md -> FR-011, FR-015] [Source: specs/003-cbr-currency-rates/spec.md -> FR-013, FR-015, FR-022, FR-024]
 - **SHARED-FR-004** *(MOEX FR-007; SPBEX FR-006, FR-009; CBR FR-008, FR-011)*: Successful empty history MUST return `[]`. A successful quote lookup with no quote MUST return HTTP 200 and a one-element array whose six fields are all `null`. [Source: specs/002-spbex-ticker-update/spec.md -> FR-006, FR-009] [Source: specs/003-cbr-currency-rates/spec.md -> FR-008, FR-011]
-- **SHARED-FR-005** *(MOEX FR-010; SPBEX FR-014; CBR FR-016)*: API documentation MUST describe routes, symbols, provider field mappings, empty/no-quote outcomes, and error behavior consistently. It MUST also describe indefinite history retention, incremental request refresh, scheduled full refresh and its cadence configuration, retry behavior, and the persistent-storage requirement; `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` does not cap or evict durable history. CBR documentation MUST state its rate normalization, null mappings, and effective-date behavior. [Source: specs/004-history-cache-refresh/spec.md -> FR-013] [Source: specs/002-spbex-ticker-update/spec.md -> FR-014] [Source: specs/003-cbr-currency-rates/spec.md -> FR-016]
+- **SHARED-FR-005** *(MOEX FR-010; SPBEX FR-014; CBR FR-016)*: API documentation MUST describe routes, symbols, provider field mappings, empty/no-quote outcomes, and error behavior consistently. It MUST also describe indefinite history retention, incremental request refresh, scheduled full refresh and its cadence configuration, retry behavior, and the persistent-storage requirement; `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` does not cap or evict durable history. CBR documentation MUST state its rate normalization, null mappings, and effective-date behavior. Application configuration documentation MUST describe `EXCHANGE_API_LOG_COLOR`, its enabled default, and its disabling values. [Source: specs/004-history-cache-refresh/spec.md -> FR-013] [Source: specs/002-spbex-ticker-update/spec.md -> FR-014] [Source: specs/003-cbr-currency-rates/spec.md -> FR-016] [Source: specs/006-log-coloring/spec.md -> FR-005]
 
 ## Provider Data Requirements
 
@@ -219,6 +222,7 @@ As an API client, I want to fetch a symbol's complete history from a versioned v
 2. **Given** an unsupported provider or malformed or unsupported symbol, **When** its v2 history route is requested, **Then** the service returns the established client error behavior.
 3. **Given** the source or history store fails, **When** the v2 history route is requested, **Then** the service returns the established upstream or store error behavior.
 4. **Given** a valid provider-symbol pair and the source successfully returns no history, **When** its v2 history route is requested, **Then** the service returns an empty array (`[]`).
+5. **Given** `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are both unset, **When** a v2 history route is requested, **Then** the route is available and history refresh uses the existing defaults.
 
 [Source: specs/005-v2-history-quote-api/spec.md -> "Fetch symbol history from v2"]
 
@@ -234,8 +238,39 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 1. **Given** a supported provider and symbol with current source data, **When** its v2 quote route is requested, **Then** the service returns that provider's current quote in the established one-record, six-field format.
 2. **Given** a valid provider-symbol pair with no quote data, **When** its v2 quote route is requested, **Then** the service returns the established no-quote result.
 3. **Given** the source is unavailable or returns unusable data, **When** its v2 quote route is requested, **Then** the service returns the established upstream error behavior.
+4. **Given** `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are both unset, **When** a v2 quote route is requested, **Then** the route is available.
 
 [Source: specs/005-v2-history-quote-api/spec.md -> "Fetch the current quote from v2"]
+
+### User Story 10 - Disable log colors (Priority: P1)
+
+A service operator running the application in a terminal or log collector that cannot display ANSI colors can disable colored log output through an environment setting. When disabled, log messages remain readable and contain no color control sequences.
+
+**Why this priority**: Color control sequences can make logs difficult to read in colorless terminals and downstream log tools. Disabling them directly addresses that operational need.
+
+**Independent Test**: Start the application with the color setting disabled, produce representative log messages, and verify that messages contain no color control sequences while retaining their normal text and severity information.
+
+**Acceptance Scenarios**:
+1. **Given** the color setting is disabled, **When** the application writes log messages, **Then** the messages contain no color control sequences.
+2. **Given** the color setting is disabled, **When** the application writes log messages, **Then** message text, severity, and ordering remain available as usual.
+3. **Given** `EXCHANGE_API_LOG_COLOR` is set to `false`, `0`, `no`, or `off` in any letter case, **When** the application writes log messages, **Then** coloring is disabled.
+
+[Source: specs/006-log-coloring/spec.md -> "Disable log colors"]
+
+### User Story 11 - Keep colored logs by default (Priority: P1)
+
+An operator who does not configure the color setting receives the existing colored log output by default.
+
+**Why this priority**: Existing deployments should retain the current log presentation without requiring configuration changes.
+
+**Independent Test**: Start the application without the color setting and verify that representative log messages use the existing colored presentation.
+
+**Acceptance Scenarios**:
+1. **Given** the color setting is absent, **When** the application writes log messages, **Then** colored output is enabled.
+2. **Given** the color setting is explicitly enabled, **When** the application writes log messages, **Then** colored output is enabled.
+3. **Given** `EXCHANGE_API_LOG_COLOR` has any other value, **When** the application writes log messages, **Then** coloring remains enabled.
+
+[Source: specs/006-log-coloring/spec.md -> "Keep colored logs by default"]
 
 ## Shared Freshness, Performance, and Operations
 
@@ -244,8 +279,12 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 - **SHARED-FR-008** *(MOEX FR-012; SPBEX FR-012; CBR FR-017)*: Under 10 concurrent clients issuing 10 requests per second total, at least 95% of successful responses on each of the six routes MUST complete end to end in under one second. This is a hard acceptance gate; a miss requires optimization and another measurement. [Source: specs/002-spbex-ticker-update/spec.md -> FR-012] [Source: specs/003-cbr-currency-rates/spec.md -> FR-017]
 - **SHARED-FR-009** *(MOEX FR-015; SPBEX FR-014; CBR FR-018)*: The release MUST successfully build a Linux amd64 container image. AMD64 acceptance requires build success only, not runtime or route testing. [Source: specs/003-cbr-currency-rates/spec.md -> FR-018]
 - **SHARED-FR-010** *(MOEX FR-016; CBR FR-019)*: On Ctrl+C (SIGINT), the service MUST stop accepting new requests, allow in-flight work to finish, and exit within 30 seconds. Remaining work MUST be cancelled when the deadline expires. [Source: specs/001-moex-ticker-update/spec.md -> FR-016] [Source: specs/003-cbr-currency-rates/spec.md -> FR-019]
-- **SHARED-FR-011** *(CBR FR-023, FR-025)*: Every application configuration environment variable MUST begin with `EXCHANGE_API_`. Shared settings MUST apply consistently across providers; source and response-size settings MAY be provider-specific. Current names are `EXCHANGE_API_LISTEN_ADDR`, `EXCHANGE_API_REQUEST_TIMEOUT_SECS`, `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES`, `EXCHANGE_API_HISTORY_CACHE_DB_PATH`, `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS`, `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS`, `EXCHANGE_API_MOEX_ISS_BASE_URL`, `EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES`, `EXCHANGE_API_MOEX_MAX_HISTORY_BYTES`, `EXCHANGE_API_SPBEX_API_BASE_URL`, `EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES`, `EXCHANGE_API_CBR_API_BASE_URL`, and `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES`. `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` is removed; if set, startup MUST fail with a migration message directing operators to `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS`. [Source: specs/004-history-cache-refresh/spec.md -> FR-014] [Source: specs/003-cbr-currency-rates/spec.md -> FR-023, FR-025]
+- **SHARED-FR-011** *(CBR FR-023, FR-025)*: Every application configuration environment variable MUST begin with `EXCHANGE_API_`. Shared settings MUST apply consistently across providers; source and response-size settings MAY be provider-specific. Current names are `EXCHANGE_API_LISTEN_ADDR`, `EXCHANGE_API_REQUEST_TIMEOUT_SECS`, `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES`, `EXCHANGE_API_HISTORY_CACHE_DB_PATH`, `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS`, `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS`, `EXCHANGE_API_MOEX_ISS_BASE_URL`, `EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES`, `EXCHANGE_API_MOEX_MAX_HISTORY_BYTES`, `EXCHANGE_API_SPBEX_API_BASE_URL`, `EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES`, `EXCHANGE_API_CBR_API_BASE_URL`, `EXCHANGE_API_CBR_MAX_RESPONSE_BYTES`, and `EXCHANGE_API_LOG_COLOR`. `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` is removed; if set, startup MUST fail with a migration message directing operators to `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS`. [Source: specs/004-history-cache-refresh/spec.md -> FR-014] [Source: specs/003-cbr-currency-rates/spec.md -> FR-023, FR-025] [Source: specs/006-log-coloring/spec.md -> FR-001]
 - **SHARED-FR-012** *(project implementation behavior)*: `GET /health/live` reports process liveness. `GET /health/ready` reports readiness and returns HTTP 503 when the history store cannot be queried.
+- **SHARED-FR-029**: Operators MUST be able to configure process-wide log coloring through `EXCHANGE_API_LOG_COLOR`. [Source: specs/006-log-coloring/spec.md -> FR-001]
+- **SHARED-FR-030**: Log coloring MUST be enabled when `EXCHANGE_API_LOG_COLOR` is absent. [Source: specs/006-log-coloring/spec.md -> FR-002]
+- **SHARED-FR-031**: Values `false`, `0`, `no`, and `off` MUST disable log coloring regardless of letter case; all other values MUST leave it enabled. [Source: specs/006-log-coloring/spec.md -> FR-003]
+- **SHARED-FR-032**: When log coloring is disabled, logs MUST contain no color control sequences while preserving message content and severity information. [Source: specs/006-log-coloring/spec.md -> FR-004]
 
 ### History Retention and Refresh
 
@@ -297,6 +336,10 @@ Identifies a currency by its public three-letter code, normalized by trimming an
 
 Represents the latest official Bank of Russia rate fetched for a quote request. It is a one-element history-shaped response, carries the source's effective date and normalized RUB-per-unit rate, and is not read from or written to history storage. A successful lookup with no rate returns all six fields as null. [Source: specs/003-cbr-currency-rates/data-model.md -> Latest Quote]
 
+### Log Color Setting
+
+Represents the process-wide choice for ANSI formatting in the human-readable log formatter. It is read from `EXCHANGE_API_LOG_COLOR` at startup; absence enables coloring, and `false`, `0`, `no`, or `off` disables it case-insensitively. Other values enable coloring. The setting affects ANSI control sequences only and does not change log filtering, message content, severity, or persistence. [Source: specs/006-log-coloring/data-model.md -> Log Color Setting]
+
 ### Provider Selector
 
 Identifies one existing data adapter selected by a v2 request: `moex`, `spbex`, or `cbr`. Other values are rejected with HTTP 400 and `invalid_provider`. [Source: specs/005-v2-history-quote-api/data-model.md -> Provider Selector]
@@ -306,6 +349,8 @@ Identifies one existing data adapter selected by a v2 request: `moex`, `spbex`, 
 Represents the provider selected by the v2 path and the caller-supplied symbol. The selected existing provider normalizes and validates the symbol; the same symbol text at another provider is a separate request target. [Source: specs/005-v2-history-quote-api/data-model.md -> Provider-Symbol Request]
 
 ## Edge Cases
+
+- Disabling log colors removes ANSI color and formatting control sequences without suppressing or altering log messages. [Source: specs/006-log-coloring/spec.md -> Edge Cases]
 
 - V2 provider values are limited to `moex`, `spbex`, and `cbr`; an unsupported value returns HTTP 400 with `invalid_provider` and never selects another provider. [Source: specs/005-v2-history-quote-api/spec.md -> Edge Cases]
 - The same symbol may be valid at multiple providers; the v2 provider segment alone selects the intended provider's history or quote. [Source: specs/005-v2-history-quote-api/spec.md -> Edge Cases]
@@ -351,13 +396,18 @@ Represents the provider selected by the v2 path and the caller-supplied symbol. 
 - **SHARED-SC-018**: Shared runtime settings affect every provider consistently and provider-specific source settings remain independently configurable. [Source: specs/003-cbr-currency-rates/spec.md -> SC-010]
 - **SHARED-SC-019**: Every documented and accepted application configuration environment variable begins with `EXCHANGE_API_`, including provider-specific settings. [Source: specs/003-cbr-currency-rates/spec.md -> SC-011]
 - **SHARED-SC-020**: Each of the six v2 provider history and quote routes meets the requirement that at least 95% of successful responses finish in under one second at 10 total requests per second with 10 concurrent clients. MOEX history's initial uncached full fetch is reported separately; its gated profile runs after full history is cached. [Source: specs/005-v2-history-quote-api/spec.md -> SC-005]
+- **SHARED-SC-021**: With both history refresh settings unset, all six v2 provider history and quote routes respond according to their contracts, using the seven-day full-refresh interval and 900-second retry-backoff defaults. [Source: specs/005-v2-history-quote-api/spec.md -> SC-006]
+- **SHARED-SC-022**: With coloring disabled, all sampled log messages contain no color control sequences. [Source: specs/006-log-coloring/spec.md -> SC-001]
+- **SHARED-SC-023**: With the log-color setting absent or enabled, colored output matches the current default behavior. [Source: specs/006-log-coloring/spec.md -> SC-002]
+- **SHARED-SC-024**: Disabling coloring preserves all sampled log messages and their severity information. [Source: specs/006-log-coloring/spec.md -> SC-003]
+- **SHARED-SC-025**: Operators can identify the log-color setting, its default, and disabling values in application configuration documentation. [Source: specs/006-log-coloring/spec.md -> SC-004]
 
 ## Assumptions
 
 - **AS-001**: Indefinite retention excludes deliberate operator deletion or loss of underlying storage. [Source: specs/004-history-cache-refresh/spec.md -> "Lives forever"]
 - **AS-002**: User requests fetch records newer than the latest retained date; scheduled full refreshes reconcile older revisions. [Source: specs/004-history-cache-refresh/spec.md -> "User-request refreshes"]
-- **AS-003**: The full-refresh interval accepts any positive number of seconds and defaults to 604800 seconds. [Source: specs/004-history-cache-refresh/spec.md -> "configurable full-refresh interval"]
-- **AS-004**: Retryable failures use persisted exponential backoff from one second to the configured cap, default 900 seconds. [Source: specs/004-history-cache-refresh/spec.md -> "Retryable background failures"]
+- **AS-003**: The full-refresh interval accepts any positive number of seconds and defaults to 604800 seconds. [Source: specs/004-history-cache-refresh/spec.md -> "configurable full-refresh interval"] [Source: specs/005-v2-history-quote-api/spec.md -> "The full-refresh interval and retry-backoff settings default to seven days and 900 seconds"]
+- **AS-004**: Retryable failures use persisted exponential backoff from one second to the configured cap, default 900 seconds. [Source: specs/004-history-cache-refresh/spec.md -> "Retryable background failures"] [Source: specs/005-v2-history-quote-api/spec.md -> "The full-refresh interval and retry-backoff settings default to seven days and 900 seconds"]
 - **AS-005**: TTL-based history expiration and `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` are removed; deployments must migrate to the interval setting. [Source: specs/004-history-cache-refresh/spec.md -> "TTL-based history expiration"]
 - **AS-006**: Every provider/symbol collection already stored is tracked for background refresh, including symbols not requested again; failures preserve retained history. [Source: specs/004-history-cache-refresh/spec.md -> "The application tracks symbols"]
 - **AS-007**: Existing provider-specific error behavior remains authoritative when refreshes fail. [Source: specs/004-history-cache-refresh/spec.md -> "Existing provider-specific error behavior"]
@@ -381,6 +431,9 @@ Represents the provider selected by the v2 path and the caller-supplied symbol. 
 - **AS-025**: V2 changes route organization only; provider mappings, history lifecycle, response records, and error contracts remain unchanged. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
 - **AS-026**: Provider-specific v1 routes remain available during the v2 migration to preserve compatibility. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
 - **AS-027**: V2 route templates are `/v2/history/{PROVIDER}/{SYMBOL}` and `/v2/quote/{PROVIDER}/{SYMBOL}`; braces mark path parameters. [Source: specs/005-v2-history-quote-api/spec.md -> Assumptions]
+- **AS-028**: The log-color setting is process-wide and applied when the application starts. [Source: specs/006-log-coloring/spec.md -> "The setting is process-wide and is applied when the application starts"]
+- **AS-029**: Colored log output is the compatible default for existing deployments. [Source: specs/006-log-coloring/spec.md -> "The application currently emits colored logs by default"]
+- **AS-030**: Feature completion includes the final container build, Semgrep source analysis, and Trivy image scan; outcomes and unavailable scans or fixes are recorded in the quickstart. [Source: specs/006-log-coloring/spec.md -> "Feature completion includes the constitution-required final container build"]
 
 ## Implementation Comparison and Open Contradictions
 

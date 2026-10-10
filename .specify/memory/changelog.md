@@ -2,19 +2,33 @@
 
 ## Merged Features Log
 
+### Configurable Log Coloring — archived 2026-10-10
+**Branch:** 006-log-coloring
+**Spec:** [specs/006-log-coloring/spec.md](../../specs/006-log-coloring/spec.md)
+
+**What was added:**
+- Process-wide `EXCHANGE_API_LOG_COLOR` configuration, enabled by default; case-insensitive `false`, `0`, `no`, and `off` disable ANSI coloring, while all other values keep it enabled.
+- Disabled-color behavior that preserves message content and severity, plus operator configuration documentation and formatter-output coverage.
+
+**New Components:**
+- No new production module or dependency; configuration and tracing initialization extend the existing service. Adds subprocess formatter coverage in `tests/log_color.rs`.
+
+**Tasks Completed:** 11/11 tasks
+
 ### V2 History and Quote Routes — archived 2026-10-10
 **Branch:** 005-v2-history-quote-api
 **Spec:** [specs/005-v2-history-quote-api/spec.md](../../specs/005-v2-history-quote-api/spec.md)
 
 **What was added:**
 - Provider-qualified v2 history and quote routes for MOEX, SPBEX, and CBR, with provider-specific dispatch and established response and error behavior.
+- V2 routes remain available when optional history refresh settings are unset, using seven-day and 900-second defaults; a real-service regression checks all six routes in that configuration.
 - Continued availability of all provider-specific v1 routes during migration.
 - Six separate v2 performance profiles; the initial uncached MOEX full fetch is reported separately and the one-second gate applies after history is fully cached.
 
 **New Components:**
 - None; routes extend the existing HTTP router and canonical OpenAPI contract.
 
-**Tasks Completed:** 12/12 tasks
+**Tasks Completed:** 16/16 tasks
 
 ### CBR Currency Rates API — archived 2026-10-09
 **Branch:** 003-cbr-currency-rates

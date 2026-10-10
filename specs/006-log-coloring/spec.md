@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-10
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "user should have ability to configure log coloring via env variable. default is enabled, but option should be to disable coloring to support colorless terminals."
 

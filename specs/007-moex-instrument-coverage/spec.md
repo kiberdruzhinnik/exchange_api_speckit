@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-10
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "looks like current implementation of moex does not work with market benchmarks, e.g. i cannot fetch IMOEX benchmark ticker. also it does not work with currencies, e.g. i cannot fetch GLDRUB_TOM ticker"
 

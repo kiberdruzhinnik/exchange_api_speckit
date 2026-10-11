@@ -44,7 +44,7 @@ async fn rejects_malformed_symbols() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/bad%20ticker")
+                .uri("/v2/history/moex/bad%20ticker")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -96,7 +96,7 @@ async fn maps_malformed_upstream_json_to_bad_gateway() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -121,7 +121,7 @@ async fn maps_upstream_timeout_to_bad_gateway() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -142,7 +142,7 @@ async fn maps_upstream_server_error_to_bad_gateway() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -168,7 +168,7 @@ async fn maps_history_row_without_date_to_bad_gateway() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER")
+                .uri("/v2/history/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -189,7 +189,7 @@ async fn maps_unknown_symbol_to_bad_request() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/ZZZZUNKNOWN")
+                .uri("/v2/history/moex/ZZZZUNKNOWN")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -232,13 +232,11 @@ async fn shared_routes_preserve_each_providers_upstream_error_code() {
             4096,
         )
         .unwrap(),
-        Duration::from_secs(60),
-        1024 * 1024,
     );
     for (path, expected_code) in [
-        ("/v1/moex/SBER", "moex_unavailable"),
-        ("/v1/spbex/SBER", "spbex_unavailable"),
-        ("/v1/cbr/USD", "cbr_unavailable"),
+        ("/v2/history/moex/SBER", "moex_unavailable"),
+        ("/v2/history/spbex/SBER", "spbex_unavailable"),
+        ("/v2/history/cbr/USD", "cbr_unavailable"),
     ] {
         let response = router(state.clone())
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())

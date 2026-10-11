@@ -6,18 +6,18 @@
 
 **Status**: Completed
 
-**Input**: User description: "implement SPBEX ticker update from SYMBOL from /v1/sbpex/<SYMBOL> REST API, which should be reused from https://github.com/kiberdruzhinnik/go-exchange-api/blob/main/api/spbex.go and return something like JSON: [{\"date\":\"2013-03-25T00:00:00Z\",\"close\":73.35,\"high\":75.05,\"low\":73.21,\"volume\":120300,\"facevalue\":1},...]. make sure to fetch latest quote via /v1/spbex/<SYMBOL>/quote like in MOEX"
+**Input**: User description: "implement SPBEX ticker update from SYMBOL from /v2/history/spbex/<SYMBOL> REST API, which should be reused from https://github.com/kiberdruzhinnik/go-exchange-api/blob/main/api/spbex.go and return something like JSON: [{\"date\":\"2013-03-25T00:00:00Z\",\"close\":73.35,\"high\":75.05,\"low\":73.21,\"volume\":120300,\"facevalue\":1},...]. make sure to fetch latest quote via /v2/quote/spbex/<SYMBOL> like in MOEX"
 
 ## Clarifications
 
 ### Session 2026-10-08
 
-- Q: Should `/v1/spbex/{SYMBOL}/quote` return the latest daily candle, matching `GetCurrentPrice` in the Go reference, or the most recent executed trade, matching MOEX quote semantics? → A: Return the latest available daily candle, matching `GetCurrentPrice` in the Go reference.
+- Q: Should `/v2/quote/spbex/{SYMBOL}` return the latest daily candle, matching `GetCurrentPrice` in the Go reference, or the most recent executed trade, matching MOEX quote semantics? → A: Return the latest available daily candle, matching `GetCurrentPrice` in the Go reference.
 - Q: When the SPBEX chart feed provides no volume, should the API return `null` or `0` to preserve the referenced Go response? → A: Return `null` to indicate that volume is unavailable.
 - Q: How should the API distinguish an unsupported SPBEX symbol from a valid symbol whose chart feed is empty? → A: Treat a successful empty feed as valid empty data; return HTTP 400 only for malformed symbols or explicit upstream rejection.
 - Q: If the production load test misses the one-second p95 target for successful responses, should the feature remain incomplete until it passes? → A: Yes. The p95 target is a hard acceptance gate; optimize the request/source path and repeat measurement until it passes.
 - Q: What should the history route return when the persistent history store cannot be read or written? → A: Return HTTP 503 with the standard history-store error, distinct from an SPBEX failure.
-- Q: Should `/v1/spbex/{SYMBOL}` include a candle dated on the current calendar date? → A: No. Current-date candles are reserved for `/v1/spbex/{SYMBOL}/quote`; history returns only candles dated before the current date.
+- Q: Should `/v2/history/spbex/{SYMBOL}` include a candle dated on the current calendar date? → A: No. Current-date candles are reserved for `/v2/quote/spbex/{SYMBOL}`; history returns only candles dated before the current date.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -31,7 +31,7 @@ A client requests the history of an SPBEX instrument by symbol and receives date
 
 **Acceptance Scenarios**:
 
-1. **Given** a syntactically valid symbol accepted by SPBEX with available daily candles, **When** a client requests `/v1/spbex/{SYMBOL}`, **Then** the service returns a JSON array of records containing `date`, `close`, `high`, `low`, `volume`, and `facevalue`.
+1. **Given** a syntactically valid symbol accepted by SPBEX with available daily candles, **When** a client requests `/v2/history/spbex/{SYMBOL}`, **Then** the service returns a JSON array of records containing `date`, `close`, `high`, `low`, `volume`, and `facevalue`.
 2. **Given** source candles are out of chronological order, **When** the client requests history, **Then** the records are returned in ascending date order and each source timestamp is represented in UTC.
 3. **Given** a syntactically valid symbol with a successful empty feed, **When** the client requests history, **Then** the service returns an empty JSON array.
 4. **Given** SPBEX has a candle dated on the current calendar date, **When** a client requests history, **Then** that candle is excluded; the quote route may return it.
@@ -46,7 +46,7 @@ A client requests the latest available SPBEX quote for a symbol using a dedicate
 
 **Acceptance Scenarios**:
 
-1. **Given** a syntactically valid symbol with current SPBEX data, **When** a client requests `/v1/spbex/{SYMBOL}/quote`, **Then** the service returns a one-element array using the same six-field record shape as history.
+1. **Given** a syntactically valid symbol with current SPBEX data, **When** a client requests `/v2/quote/spbex/{SYMBOL}`, **Then** the service returns a one-element array using the same six-field record shape as history.
 2. **Given** the upstream quote data changes between requests, **When** the client requests the quote twice, **Then** the second response reflects a new upstream fetch rather than a previously cached quote.
 3. **Given** a syntactically valid symbol with no quote data available, **When** the client requests the quote, **Then** the service returns the documented no-quote result rather than treating a successful empty response as an upstream outage.
 
@@ -80,13 +80,13 @@ A client receives a documented error when its symbol is malformed or explicitly 
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST expose daily SPBEX history at `GET /v1/spbex/{SYMBOL}`. The canonical path uses `spbex` consistently with the requested quote path; the `sbpex` spelling in the request is treated as a typo.
+- **FR-001**: The system MUST expose daily SPBEX history at `GET /v2/history/spbex/{SYMBOL}`. The canonical path uses `spbex` consistently with the requested quote path; the `sbpex` spelling in the request is treated as a typo.
 - **FR-002**: The system MUST obtain SPBEX daily price data from the public chart feed behavior represented by [`api/spbex.go`](https://github.com/kiberdruzhinnik/go-exchange-api/blob/main/api/spbex.go), without exchange subscriber credentials.
 - **FR-003**: A successful history response MUST be a JSON array of records with exactly the fields `date`, `close`, `high`, `low`, `volume`, and `facevalue`.
 - **FR-004**: `date` MUST preserve the candle's source timestamp and be serialized as an ISO 8601 UTC timestamp. Records MUST be sorted from oldest to newest.
 - **FR-005**: `close`, `high`, and `low` MUST preserve the source candle prices. `facevalue` MUST be `1`, matching the referenced SPBEX adapter's response behavior. Because the chart feed does not provide volume, `volume` MUST be `null` to indicate unavailable data.
 - **FR-006**: A syntactically valid symbol with a successful feed response and no available history MUST return an empty JSON array.
-- **FR-007**: The system MUST expose the latest SPBEX quote at `GET /v1/spbex/{SYMBOL}/quote`. It MUST return a one-element JSON array containing the latest available daily candle, with the same six fields as a history record.
+- **FR-007**: The system MUST expose the latest SPBEX quote at `GET /v2/quote/spbex/{SYMBOL}`. It MUST return a one-element JSON array containing the latest available daily candle, with the same six fields as a history record.
 - **FR-008**: The quote endpoint MUST fetch current SPBEX data on every request and MUST NOT reuse a previously fetched quote.
 - **FR-009**: When SPBEX successfully reports no current quote, the endpoint MUST return a one-element record with nullable market fields rather than an upstream dependency error.
 - **FR-010**: The system MUST return malformed symbols and symbols explicitly rejected by the upstream source as HTTP `400` in the standard JSON error format. A successful empty chart-feed response MUST be treated as valid empty data, not as an unsupported symbol.
@@ -115,7 +115,7 @@ A client receives a documented error when its symbol is malformed or explicitly 
 
 ## Assumptions
 
-- `SPBEX` is the exchange identifier; `/v1/sbpex/{SYMBOL}` in the initial description is a typo for `/v1/spbex/{SYMBOL}`, confirmed by the quote path in the same request.
+- `SPBEX` is the exchange identifier; The initial request misspelled the provider as `sbpex`; the supported provider identifier is `spbex`.
 - SPBEX symbols are normalized by trimming surrounding whitespace and converting letters to uppercase, matching the referenced Go adapter.
 - The chart feed is not an instrument catalog. A successful empty feed is indistinguishable from valid empty history and MUST use the empty-history/no-quote behavior; HTTP `400` for an otherwise well-formed symbol is returned only when the upstream explicitly rejects it.
 - Daily chart history is based on the referenced SPBEX adapter's public chart feed, but the history response excludes the current calendar date; the quote route is the only route that returns current-date candle data.

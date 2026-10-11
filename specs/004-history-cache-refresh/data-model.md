@@ -15,7 +15,7 @@ Represents retained daily history for one normalized symbol at one provider.
 | next_refresh_attempt_at | Earliest time the collection may be attempted again | Persisted due time; retryable errors use capped backoff, other HTTP 4xx failures use one configured interval after the failed attempt |
 | updated_at | Time the collection was last successfully merged | Updated only after a successful atomic merge |
 
-Collection identity: `(provider, symbol)`. The implementation must migrate legacy composite keys without dropping their stored response bodies: `MOEX:{symbol}` and `CBR:{symbol}` map to their provider and symbol, while all `SPBEX:{symbol}:{UTC-date}` rows map to one SPBEX collection per normalized symbol. Migration must merge same-date records by the normal date identity. SPBEX's current date suffix is a response-boundary detail and must not create separate durable collections for the same symbol.
+Collection identity: `(provider, symbol)`. Existing durable collections and records are retained during schema upgrades. Legacy serialized response-cache tables are dropped and their rows are not imported.
 
 ## History Record
 

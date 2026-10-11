@@ -1,28 +1,16 @@
 use serde_yaml::Value;
 use std::path::{Path, PathBuf};
 
-const FEATURE_CONTRACTS: &[(&str, &[(&str, &str)])] = &[
+const FEATURE_CONTRACTS: &[(&str, &str)] = &[
     (
         "specs/001-moex-ticker-update/contracts/openapi.yaml",
-        &[
-            ("/v1/moex/{SYMBOL}", "moex_unavailable"),
-            ("/v1/moex/{SYMBOL}/quote", "moex_unavailable"),
-        ],
+        "moex",
     ),
     (
         "specs/002-spbex-ticker-update/contracts/openapi.yaml",
-        &[
-            ("/v1/spbex/{SYMBOL}", "spbex_unavailable"),
-            ("/v1/spbex/{SYMBOL}/quote", "spbex_unavailable"),
-        ],
+        "spbex",
     ),
-    (
-        "specs/003-cbr-currency-rates/contracts/openapi.yaml",
-        &[
-            ("/v1/cbr/{SYMBOL}", "cbr_unavailable"),
-            ("/v1/cbr/{SYMBOL}/quote", "cbr_unavailable"),
-        ],
-    ),
+    ("specs/003-cbr-currency-rates/contracts/openapi.yaml", "cbr"),
 ];
 
 fn external_path_item<'a>(
@@ -60,11 +48,14 @@ fn each_feature_contract_resolves_its_two_paths_in_the_canonical_contract() {
     let canonical: Value =
         serde_yaml::from_str(include_str!("../specs/contracts/openapi.yaml")).unwrap();
     let fields = ["date", "close", "high", "low", "volume", "facevalue"];
-    for (relative, expected_paths) in FEATURE_CONTRACTS {
+    for (relative, provider) in FEATURE_CONTRACTS {
         let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative);
         let text = std::fs::read_to_string(&file).unwrap();
         let feature: Value = serde_yaml::from_str(&text).unwrap();
-        for (path, upstream_code) in *expected_paths {
+        for path in [
+            "/v2/history/{PROVIDER}/{SYMBOL}",
+            "/v2/quote/{PROVIDER}/{SYMBOL}",
+        ] {
             let operation = external_path_item(&file, &feature, path, &canonical);
             let get = &operation["get"];
             assert!(
@@ -77,13 +68,14 @@ fn each_feature_contract_resolves_its_two_paths_in_the_canonical_contract() {
             );
             assert_eq!(
                 get["responses"]["502"]["$ref"].as_str(),
-                Some(match *upstream_code {
-                    "moex_unavailable" => "#/components/responses/MoexUpstreamUnavailable",
-                    "spbex_unavailable" => "#/components/responses/SpbexUpstreamUnavailable",
-                    _ => "#/components/responses/CbrUpstreamUnavailable",
-                })
+                Some("#/components/responses/ProviderUnavailable")
             );
-            if !path.ends_with("/quote") {
+            assert_eq!(
+                canonical["components"]["responses"]["ProviderUnavailable"]["content"]["application/json"]
+                    ["examples"][*provider]["value"]["error"]["code"],
+                format!("{}_unavailable", provider)
+            );
+            if path.starts_with("/v2/history/") {
                 assert!(
                     get["responses"]["503"].is_mapping(),
                     "{path} missing history-store failure response"
@@ -110,16 +102,10 @@ fn each_feature_contract_resolves_its_two_paths_in_the_canonical_contract() {
 }
 
 #[test]
-fn canonical_contract_has_all_six_routes_and_shared_envelope() {
+fn canonical_contract_has_provider_qualified_routes_and_shared_envelope() {
     let contract: Value =
         serde_yaml::from_str(include_str!("../specs/contracts/openapi.yaml")).unwrap();
     for path in [
-        "/v1/moex/{SYMBOL}",
-        "/v1/moex/{SYMBOL}/quote",
-        "/v1/spbex/{SYMBOL}",
-        "/v1/spbex/{SYMBOL}/quote",
-        "/v1/cbr/{SYMBOL}",
-        "/v1/cbr/{SYMBOL}/quote",
         "/v2/history/{PROVIDER}/{SYMBOL}",
         "/v2/quote/{PROVIDER}/{SYMBOL}",
     ] {

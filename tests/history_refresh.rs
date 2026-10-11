@@ -61,7 +61,7 @@ fn providers(stub: Stub) -> Providers {
 #[tokio::test]
 async fn worker_refreshes_due_collection_and_resets_retry_state() {
     let dir = tempfile::tempdir().unwrap();
-    let store = CacheStore::open(dir.path().join("cache.sqlite"), 1024)
+    let store = CacheStore::open(dir.path().join("cache.sqlite"))
         .await
         .unwrap();
     store
@@ -105,7 +105,7 @@ async fn worker_refreshes_due_collection_and_resets_retry_state() {
 async fn retry_state_uses_capped_exponential_delay_and_persists() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("cache.sqlite");
-    let store = CacheStore::open(&path, 1024).await.unwrap();
+    let store = CacheStore::open(&path).await.unwrap();
     store
         .merge_records("moex", "SBER", &[record(1.0)], true, 10)
         .await
@@ -149,7 +149,7 @@ async fn retry_state_uses_capped_exponential_delay_and_persists() {
             .next_attempt_at,
         Some(303)
     );
-    let reopened = CacheStore::open(&path, 1024).await.unwrap();
+    let reopened = CacheStore::open(&path).await.unwrap();
     assert_eq!(
         reopened
             .collection("moex", "SBER")
@@ -164,7 +164,7 @@ async fn retry_state_uses_capped_exponential_delay_and_persists() {
 #[tokio::test]
 async fn permanent_status_defers_until_one_full_interval_after_failure() {
     let dir = tempfile::tempdir().unwrap();
-    let store = CacheStore::open(dir.path().join("cache.sqlite"), 1024)
+    let store = CacheStore::open(dir.path().join("cache.sqlite"))
         .await
         .unwrap();
     store
@@ -183,7 +183,7 @@ async fn permanent_status_defers_until_one_full_interval_after_failure() {
 #[tokio::test]
 async fn failed_refresh_keeps_last_good_data_and_success_timestamp() {
     let dir = tempfile::tempdir().unwrap();
-    let store = CacheStore::open(dir.path().join("cache.sqlite"), 1024)
+    let store = CacheStore::open(dir.path().join("cache.sqlite"))
         .await
         .unwrap();
     store

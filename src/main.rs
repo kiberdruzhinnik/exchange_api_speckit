@@ -26,20 +26,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.upstream_timeout,
         config.cbr_max_response_bytes,
     )?;
-    let store = CacheStore::open(
-        &config.history_cache_db_path,
-        config.history_cache_max_bytes,
-    )
-    .await?;
-    let state = AppState::with_all_services_and_store(
-        moex,
-        spbex,
-        cbr,
-        Duration::from_secs(60),
-        config.history_cache_max_bytes,
-        store,
-    )
-    .with_admin_api_key(config.admin_api_key.clone());
+    let store = CacheStore::open(&config.history_cache_db_path).await?;
+    let state = AppState::with_all_services_and_store(moex, spbex, cbr, store)
+        .with_admin_api_key(config.admin_api_key.clone());
     let app = router(state.clone());
     let listener = TcpListener::bind(config.listen_addr).await?;
 

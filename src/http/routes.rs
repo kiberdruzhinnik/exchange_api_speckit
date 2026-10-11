@@ -40,46 +40,6 @@ async fn ready(State(state): State<AppState>) -> Result<Json<HealthResponse>, St
     Ok(Json(HealthResponse { status: "ready" }))
 }
 
-async fn ticker_history(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Response<Body>, ApiError> {
-    serve_history(
-        state.clone(),
-        state.providers.moex.clone(),
-        symbol,
-        "MOEX",
-        false,
-    )
-    .await
-}
-async fn spbex_history(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Response<Body>, ApiError> {
-    serve_history(
-        state.clone(),
-        state.providers.spbex.clone(),
-        symbol,
-        "SPBEX",
-        true,
-    )
-    .await
-}
-async fn cbr_history(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Response<Body>, ApiError> {
-    serve_history(
-        state.clone(),
-        state.providers.cbr.clone(),
-        symbol,
-        "CBR",
-        false,
-    )
-    .await
-}
-
 async fn v2_history(
     State(state): State<AppState>,
     Path((provider, symbol)): Path<(String, String)>,
@@ -104,12 +64,6 @@ async fn serve_history(
         .await
         .map_err(|error| map_history_provider_error(provider.upstream_code(), error))?;
     if let Some(store) = &state.cache_store {
-        if namespace == "MOEX" {
-            store
-                .import_moex_legacy_history(&symbol)
-                .await
-                .map_err(|error| ApiError::Store(error.to_string()))?;
-        }
         let previous = store
             .collection(namespace.to_ascii_lowercase().as_str(), &symbol)
             .await
@@ -154,38 +108,19 @@ async fn serve_history(
             .body(Body::from(body))
             .map_err(|e| ApiError::provider(provider.upstream_code(), anyhow::anyhow!(e)));
     }
-    let key = format!("{namespace}:{symbol}");
-    let fetch_provider = provider.clone();
-    let fetch_symbol = symbol.clone();
-    let fetch_context = history_context;
-    let (body, outcome) = state
-        .history_cache
-        .get_or_fetch(key, move || async move {
-            tracing::info!(symbol = %fetch_symbol, provider = namespace, phase = "source_fetch", "history source fetch started");
-            let records = fetch_provider.history_with_context(&fetch_symbol, None, fetch_context)
-                    .await
-                    .map_err(|error| match error {
-                        error => if matches!(error, crate::provider::ProviderError::InvalidSymbol) { format!("invalid symbol: {error}") } else { format!("upstream: {error}") },
-                    })?;
-            serde_json::to_vec(&records)
-                .map(bytes::Bytes::from)
-                .map_err(|error| format!("upstream: {error}"))
-        })
+    tracing::info!(symbol = %symbol, provider = namespace, phase = "source_fetch", "history source fetch started");
+    let records = provider
+        .history_with_context(&symbol, None, history_context)
         .await
-        .map_err(|error| {
-            if error.starts_with("invalid symbol:") {
-                ApiError::InvalidSymbol
-            } else if error.starts_with("cache store:") {
-                ApiError::Store(error)
-            } else {
-                ApiError::provider(provider.upstream_code(), anyhow::anyhow!(error))
-            }
-        })?;
+        .map_err(|error| map_history_provider_error(provider.upstream_code(), error))?;
+    validate_request_records(provider.upstream_code(), &records)?;
+    let body = serde_json::to_vec(&records)
+        .map_err(|error| ApiError::provider(provider.upstream_code(), anyhow::anyhow!(error)))?;
     tracing::info!(
         symbol,
         provider = namespace,
         elapsed_ms = started.elapsed().as_millis() as u64,
-        cache = outcome.as_str(),
+        cache = "bypass",
         status = 200,
         "history request completed"
     );
@@ -196,24 +131,6 @@ async fn serve_history(
         .map_err(|error| ApiError::provider(provider.upstream_code(), anyhow::anyhow!(error)))
 }
 
-async fn ticker_quote(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Json<Vec<crate::domain::LatestQuoteRecord>>, ApiError> {
-    serve_quote(state.providers.moex.clone(), symbol).await
-}
-async fn spbex_quote(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Json<Vec<crate::domain::LatestQuoteRecord>>, ApiError> {
-    serve_quote(state.providers.spbex.clone(), symbol).await
-}
-async fn cbr_quote(
-    State(state): State<AppState>,
-    Path(symbol): Path<String>,
-) -> Result<Json<Vec<crate::domain::LatestQuoteRecord>>, ApiError> {
-    serve_quote(state.providers.cbr.clone(), symbol).await
-}
 async fn serve_quote(
     provider: std::sync::Arc<dyn crate::provider::ExchangeProvider>,
     input_symbol: String,
@@ -271,11 +188,7 @@ async fn clear_history_cache(
             .await
             .map_err(|error| ApiError::Store(error.to_string()))?;
     }
-    state
-        .history_cache
-        .invalidate(&format!("{namespace}:{symbol}"))
-        .await;
-    tracing::info!(provider = %provider_key, symbol = %symbol, "history cache cleared");
+    tracing::info!(provider = %provider_key, symbol = %symbol, "history cleared");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -320,12 +233,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
-        .route("/v1/moex/{symbol}", get(ticker_history))
-        .route("/v1/moex/{symbol}/quote", get(ticker_quote))
-        .route("/v1/spbex/{symbol}", get(spbex_history))
-        .route("/v1/spbex/{symbol}/quote", get(spbex_quote))
-        .route("/v1/cbr/{symbol}", get(cbr_history))
-        .route("/v1/cbr/{symbol}/quote", get(cbr_quote))
         .route("/v2/history/{provider}/{symbol}", get(v2_history))
         .route("/v2/quote/{provider}/{symbol}", get(v2_quote))
         .route(

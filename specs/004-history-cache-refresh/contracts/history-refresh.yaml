@@ -2,9 +2,9 @@ contract: exchange-api-history-refresh
 version: 1
 scope:
   routes:
-    - GET /v1/moex/{SYMBOL}
-    - GET /v1/spbex/{SYMBOL}
-    - GET /v1/cbr/{SYMBOL}
+    - GET /v2/history/moex/{SYMBOL}
+    - GET /v2/history/spbex/{SYMBOL}
+    - GET /v2/history/cbr/{SYMBOL}
   response_schema: unchanged-six-field-history-array
 configuration:
   EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS:
@@ -37,5 +37,3 @@ behavior:
   quote_routes: unchanged-and-uncached
 compatibility:
   response_fields: [date, close, high, low, volume, facevalue]
-  history_cache_ttl_secs: removed-startup-fails-if-set-with-migration-message
-  history_cache_max_bytes: transient-memory-budget-only-does-not-cap-or-evict-durable-history

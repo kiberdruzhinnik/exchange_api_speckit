@@ -54,50 +54,54 @@ async fn app() -> (MockServer, axum::Router) {
 }
 
 #[tokio::test]
-async fn serves_imoex_history_on_v1_and_v2_with_index_values() {
+async fn serves_imoex_history_with_index_values() {
     let (_, app) = app().await;
-    for path in ["/v1/moex/IMOEX", "/v2/history/moex/IMOEX"] {
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let rows: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(rows.as_array().unwrap().len(), 2);
-        assert_eq!(rows[0]["date"], "2026-10-01T00:00:00Z");
-        assert_eq!(rows[0]["close"].as_f64(), Some(3200.0));
-        assert_eq!(rows[0]["high"].as_f64(), Some(3210.0));
-        assert_eq!(rows[0]["low"].as_f64(), Some(3190.0));
-        assert_eq!(rows[0]["volume"].as_f64(), Some(0.0));
-        assert!(rows[0]["facevalue"].is_null());
-    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v2/history/moex/IMOEX")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let rows: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(rows.as_array().unwrap().len(), 2);
+    assert_eq!(rows[0]["date"], "2026-10-01T00:00:00Z");
+    assert_eq!(rows[0]["close"].as_f64(), Some(3200.0));
+    assert_eq!(rows[0]["high"].as_f64(), Some(3210.0));
+    assert_eq!(rows[0]["low"].as_f64(), Some(3190.0));
+    assert_eq!(rows[0]["volume"].as_f64(), Some(0.0));
+    assert!(rows[0]["facevalue"].is_null());
 }
 
 #[tokio::test]
 async fn serves_imoex_published_current_value_without_a_trade() {
     let (_, app) = app().await;
-    for path in ["/v1/moex/IMOEX/quote", "/v2/quote/moex/IMOEX"] {
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let rows: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(rows[0]["close"].as_f64(), Some(3215.5));
-        assert!(rows[0]["date"].is_string());
-        assert!(rows[0]["volume"].is_null());
-        assert!(rows[0]["high"].is_null());
-        assert!(rows[0]["low"].is_null());
-        assert!(rows[0]["facevalue"].is_null());
-    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v2/quote/moex/IMOEX")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let rows: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(rows[0]["close"].as_f64(), Some(3215.5));
+    assert!(rows[0]["date"].is_string());
+    assert!(rows[0]["volume"].is_null());
+    assert!(rows[0]["high"].is_null());
+    assert!(rows[0]["low"].is_null());
+    assert!(rows[0]["facevalue"].is_null());
 }
 
 #[tokio::test]
@@ -111,7 +115,7 @@ async fn returns_empty_history_and_all_null_quote_when_index_has_no_published_va
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/IMOEX")
+                .uri("/v2/history/moex/IMOEX")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -128,7 +132,7 @@ async fn returns_empty_history_and_all_null_quote_when_index_has_no_published_va
     let quote = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/IMOEX/quote")
+                .uri("/v2/quote/moex/IMOEX")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -150,7 +154,7 @@ async fn maps_index_current_marketdata_failure_to_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/IMOEX/quote")
+                .uri("/v2/quote/moex/IMOEX")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -170,7 +174,7 @@ async fn index_quote_with_malformed_present_timestamp_returns_dependency_error()
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/IMOEX/quote")
+                .uri("/v2/quote/moex/IMOEX")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -190,7 +194,7 @@ async fn malformed_non_null_index_values_return_dependency_errors() {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/v1/moex/IMOEX/quote")
+                    .uri("/v2/quote/moex/IMOEX")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -216,7 +220,7 @@ async fn malformed_non_null_index_history_values_return_dependency_errors() {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/v1/moex/IMOEX")
+                    .uri("/v2/history/moex/IMOEX")
                     .body(Body::empty())
                     .unwrap(),
             )

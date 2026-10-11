@@ -6,7 +6,7 @@ Identifies an instrument in the SPBEX chart feed.
 
 | Field | Type | Rules |
 |---|---|---|
-| `symbol` | string | Trim outer whitespace, uppercase ASCII letters, then validate against `[A-Za-z0-9._-]+`; use the normalized value for upstream requests and cache keys. |
+| `symbol` | string | Trim outer whitespace, uppercase ASCII letters, then validate against `[A-Za-z0-9._-]+`; use the normalized value for upstream requests and collection identity. |
 
 ## Daily Market Record
 
@@ -27,6 +27,6 @@ For every candle, `low <= close <= high` and `low <= high`. A response with dupl
 
 A one-element array containing the latest record after a fresh chart-feed request. It uses the same six JSON keys. When the feed contains no candles across the full available range, `date`, `close`, `high`, `low`, and `facevalue` are null; `volume` remains null. A valid quote is never read from history cache.
 
-## History Cache Entry
+## Durable History Collection
 
-Reuse the existing persistent cache representation: normalized exchange-qualified key (`SPBEX:{symbol}`), complete serialized response body, fetch time, expiry time, and response byte count. Only complete successful responses are stored. Entries are eligible for reuse before expiry and survive process restart for the remaining freshness period. Cache capacity and TTL use the existing service settings.
+Validated daily records are retained in SQLite by normalized `(provider, symbol)` and date. Each history request fetches records after the latest retained date, merges them, and returns the complete ordered collection. Records do not expire automatically. Quotes are fetched for each request and are not persisted.

@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: SPBEX Ticker History and Quote API
-  version: 1.0.0
-  description: Provider-specific view of the canonical Exchange API contract. Existing SPBEX upstream error codes are preserved.
+  version: 2.0.0
+  description: Provider-qualified view of the canonical Exchange API contract. Existing SPBEX upstream error codes are preserved.
 servers:
   - url: /
 paths:
-  /v1/spbex/{SYMBOL}:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1spbex~1{SYMBOL}'
-  /v1/spbex/{SYMBOL}/quote:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1spbex~1{SYMBOL}~1quote'
+  /v2/history/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1history~1{PROVIDER}~1{SYMBOL}'
+  /v2/quote/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1quote~1{PROVIDER}~1{SYMBOL}'

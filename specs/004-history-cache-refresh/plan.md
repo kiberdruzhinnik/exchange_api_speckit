@@ -14,7 +14,7 @@ Retain normalized history records durably without age-based expiry, refresh only
 
 **Primary Dependencies**: Axum 0.8, Tokio 1.53, Reqwest 0.13, SQLx 0.8 with SQLite, Serde
 
-**Storage**: Existing durable SQLite history store at `EXCHANGE_API_HISTORY_CACHE_DB_PATH`; schema requires migration to retain provider/symbol identity and full-refresh metadata
+**Storage**: Existing durable SQLite history store at `EXCHANGE_API_HISTORY_CACHE_DB_PATH`; schema retains provider/symbol identity and full-refresh metadata; legacy response-cache tables are dropped without importing their rows
 
 **Testing**: Required Rust unit, provider client, API contract, scheduler, and SQLite migration/integration checks (`cargo test`); fixture-backed upstream clients use Wiremock
 
@@ -24,7 +24,7 @@ Retain normalized history records durably without age-based expiry, refresh only
 
 **Performance Goals**: Preserve the six-route acceptance target: at least 95% of successful responses under one second at 10 total requests per second and 10 concurrent clients. The refreshed history path now contacts upstream on every request, so its latency must be measured and optimized without returning stale success data.
 
-**Constraints**: History rows must not expire or be automatically evicted. Existing 64 MiB `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` cannot remain a persistent eviction limit while satisfying indefinite retention; it may continue to bound transient/in-memory use, but persistent data must be preserved. Remove `EXCHANGE_API_HISTORY_CACHE_TTL_SECS`; fail startup with a clear migration message if it remains set. New `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` defaults to 604800 seconds and must be positive. Retryable background failures use exponential backoff from one second, capped by positive `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` (default 900); persist retry state. Validate full-refresh data before atomically updating records or success metadata. Provider response limits and request timeouts continue to apply.
+**Constraints**: History rows must not expire or be automatically evicted. Legacy response-cache max-bytes and TTL settings are removed. New `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` defaults to 604800 seconds and must be positive. Retryable background failures use exponential backoff from one second, capped by positive `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` (default 900); persist retry state. Validate full-refresh data before atomically updating records or success metadata. Provider response limits and request timeouts continue to apply.
 
 **Scale/Scope**: Three provider namespaces and arbitrary validated symbols; the background worker must process every symbol already present in the durable store according to the configured interval, defaulting to seven days, including symbols not requested since the prior run. Bound worker concurrency to avoid overload of public upstreams.
 

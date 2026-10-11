@@ -6,7 +6,7 @@
 
 **Status**: Completed
 
-**Input**: User description: "move history fetch to /v2/history/<SYMBOL> and current quote to /v2/quote/<SYMBOL>"; clarified to include `<PROVIDER>` in each path and keep existing v1 routes.
+**Input**: User description: "move history fetch to /v2/history/<SYMBOL> and current quote to /v2/quote/<SYMBOL>"; clarified to include `<PROVIDER>` in each path and keep v2 routes.
 
 ## Clarifications
 
@@ -59,7 +59,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 
 - The provider segment must identify one of the supported providers: `moex`, `spbex`, or `cbr`.
 - The same symbol may be accepted by more than one provider; the provider path segment must select the intended provider's history or quote.
-- Existing v1 routes remain available during the v2 migration to preserve current consumers.
+- The provider-qualified v2 routes are the only supported public history and quote routes.
 
 ## Requirements *(mandatory)*
 
@@ -71,7 +71,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 - **FR-004**: V2 history responses MUST preserve the established complete-history behavior, six-field record schema, and provider ordering.
 - **FR-005**: V2 quote responses MUST preserve the established current-quote behavior and six-field record schema.
 - **FR-006**: The v2 routes MUST preserve established symbol validation and actionable upstream, store, and no-data outcomes.
-- **FR-007**: The existing v1 provider-specific history and quote routes MUST remain available while clients migrate to v2.
+- **FR-007**: The service MUST NOT register provider-specific v1 history or quote routes.
 - **FR-008**: The v2 history and quote routes MUST be registered and available when `EXCHANGE_API_HISTORY_FULL_REFRESH_INTERVAL_SECS` and `EXCHANGE_API_HISTORY_REFRESH_RETRY_MAX_BACKOFF_SECS` are unset; those settings MUST use their existing defaults of seven days and 900 seconds, respectively, and MUST NOT control route availability.
 
 ### Key Entities *(include if feature involves data)*
@@ -85,7 +85,7 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 
 - **SC-001**: Each supported provider-symbol combination can retrieve history through `GET /v2/history/{PROVIDER}/{SYMBOL}` with the established response shape and ordering.
 - **SC-002**: Each supported provider-symbol combination can retrieve a current quote through `GET /v2/quote/{PROVIDER}/{SYMBOL}` with the established response shape and freshness behavior.
-- **SC-003**: All v1 history and quote routes continue to return their existing documented outcomes during the v2 migration.
+- **SC-003**: Requests to removed v1 history and quote routes do not reach provider handlers.
 - **SC-004**: Invalid, unsupported, ambiguous, and unavailable-symbol cases return documented outcomes without serving data from an unintended provider.
 - **SC-005**: In a separate workload profile for each of the six v2 provider history and quote routes, at 10 total requests per second with 10 concurrent clients, at least 95% of successful responses complete in under one second. For MOEX history, measure the initial uncached full-history fetch separately and report its latency and outcome; apply the one-second criterion to a separate profile run after the full history has been populated in the cache, measuring subsequent cached history requests.
 - **SC-006**: With both history refresh settings unset, all six v2 provider history and quote routes respond according to their documented contracts, and history refresh uses the seven-day full-refresh interval and 900-second retry backoff defaults.
@@ -93,6 +93,6 @@ As an API client, I want to fetch a symbol's current quote from a versioned v2 r
 ## Assumptions
 
 - V2 changes route organization only; established provider mappings, cache lifecycle, response records, and error contracts remain unchanged.
-- V1 provider-specific routes remain available to preserve compatibility unless a later migration decision changes that policy.
+- Only the provider-qualified v2 history and quote routes are supported.
 - The v2 route paths are exactly `/v2/history/{PROVIDER}/{SYMBOL}` and `/v2/quote/{PROVIDER}/{SYMBOL}`; braces denote path parameters and are not literal URL characters.
 - The full-refresh interval and retry-backoff settings default to seven days and 900 seconds, respectively, as defined by the permanent history cache refresh feature.

@@ -1,4 +1,3 @@
-pub mod cache;
 pub mod cache_store;
 pub mod cbr;
 pub mod config;
@@ -28,7 +27,6 @@ pub struct AppState {
     pub spbex: SpbexClient,
     pub cbr: CbrClient,
     pub providers: Providers,
-    pub history_cache: cache::HistoryCache,
     pub cache_store: Option<cache_store::CacheStore>,
     pub admin_api_key: Option<Arc<str>>,
 }
@@ -43,60 +41,32 @@ impl AppState {
                 16 * 1024 * 1024,
             )
             .expect("valid SPBEX default client"),
-            std::time::Duration::from_secs(60),
-            64 * 1024 * 1024,
         )
     }
 
-    pub fn with_cache(moex: MoexClient, ttl: std::time::Duration, max_bytes: u64) -> Self {
-        Self::with_services(
-            moex,
-            SpbexClient::new(
-                "https://spbexchange.ru/api/",
-                std::time::Duration::from_secs(15),
-                16 * 1024 * 1024,
-            )
-            .expect("valid SPBEX default client"),
-            ttl,
-            max_bytes,
-        )
-    }
-
-    pub fn with_services(
-        moex: MoexClient,
-        spbex: SpbexClient,
-        ttl: std::time::Duration,
-        max_bytes: u64,
-    ) -> Self {
+    pub fn with_services(moex: MoexClient, spbex: SpbexClient) -> Self {
         let cbr = CbrClient::new(
             "https://www.cbr.ru/",
             std::time::Duration::from_secs(15),
             16 * 1024 * 1024,
         )
         .expect("valid CBR default client");
-        Self::with_all_services(moex, spbex, cbr, ttl, max_bytes)
+        Self::with_all_services(moex, spbex, cbr)
     }
 
-    pub fn with_store(
-        moex: MoexClient,
-        ttl: std::time::Duration,
-        max_bytes: u64,
-        store: cache_store::CacheStore,
-    ) -> Self {
+    pub fn with_store(moex: MoexClient, store: cache_store::CacheStore) -> Self {
         let spbex = SpbexClient::new(
             "https://spbexchange.ru/api/",
             std::time::Duration::from_secs(15),
             16 * 1024 * 1024,
         )
         .expect("valid SPBEX default client");
-        Self::with_services_and_store(moex, spbex, ttl, max_bytes, store)
+        Self::with_services_and_store(moex, spbex, store)
     }
 
     pub fn with_services_and_store(
         moex: MoexClient,
         spbex: SpbexClient,
-        ttl: std::time::Duration,
-        max_bytes: u64,
         store: cache_store::CacheStore,
     ) -> Self {
         let cbr = CbrClient::new(
@@ -105,15 +75,13 @@ impl AppState {
             16 * 1024 * 1024,
         )
         .expect("valid CBR default client");
-        Self::with_all_services_and_store(moex, spbex, cbr, ttl, max_bytes, store)
+        Self::with_all_services_and_store(moex, spbex, cbr, store)
     }
 
     pub fn with_all_services_and_store(
         moex: MoexClient,
         spbex: SpbexClient,
         cbr: CbrClient,
-        ttl: std::time::Duration,
-        max_bytes: u64,
         store: cache_store::CacheStore,
     ) -> Self {
         let providers = Providers {
@@ -126,19 +94,12 @@ impl AppState {
             spbex,
             cbr,
             providers,
-            history_cache: cache::HistoryCache::with_store(ttl, max_bytes, store.clone()),
             cache_store: Some(store),
             admin_api_key: None,
         }
     }
 
-    pub fn with_all_services(
-        moex: MoexClient,
-        spbex: SpbexClient,
-        cbr: CbrClient,
-        ttl: std::time::Duration,
-        max_bytes: u64,
-    ) -> Self {
+    pub fn with_all_services(moex: MoexClient, spbex: SpbexClient, cbr: CbrClient) -> Self {
         let providers = Providers {
             moex: Arc::new(moex::provider::MoexProvider(moex.clone())),
             spbex: Arc::new(spbex::provider::SpbexProvider(spbex.clone())),
@@ -149,7 +110,6 @@ impl AppState {
             spbex,
             cbr,
             providers,
-            history_cache: cache::HistoryCache::new(ttl, max_bytes),
             cache_store: None,
             admin_api_key: None,
         }

@@ -6,15 +6,15 @@
 
 ## Summary
 
-Build a Rust HTTP service exposing `GET /v1/moex/{SYMBOL}` for daily history and `GET /v1/moex/{SYMBOL}/quote` for the latest executed trade. Fetch history from unauthenticated MOEX ISS, select each record from the board that was primary on its trading date, and map named source fields into the specified JSON array. Populate `facevalue` from current board-specific `LOTSIZE`; the SBER record dated 2026-10-06 is expected to be `1`. Cache only complete history responses in a bounded in-memory hot cache backed by per-instance SQLite so fresh entries survive application restarts. Fetch quote data from ISS for every quote request and never cache it. Return quotes as a one-element history-shaped array: trade execution time, price, and size map to `date`, `close`, and `volume`; `high`, `low`, and `facevalue` are null. A valid no-trade result is one record with all six values null. On SIGINT (Ctrl+C), stop accepting new connections, drain in-flight work, and exit within 30 seconds, cancelling remaining work at the deadline. Package the service as a non-root distroless Debian image for Linux amd64 and arm64.
+Build a Rust HTTP service exposing `GET /v2/history/moex/{SYMBOL}` for daily history and `GET /v2/quote/moex/{SYMBOL}` for the latest executed trade. Fetch history from unauthenticated MOEX ISS, select each record from the board that was primary on its trading date, and map named source fields into the specified JSON array. Populate `facevalue` from current board-specific `LOTSIZE`; the SBER record dated 2026-10-06 is expected to be `1`. Retain validated history records durably in per-instance SQLite collections and return the complete ordered history. Fetch quote data from ISS for every quote request and never cache it. Return quotes as a one-element history-shaped array: trade execution time, price, and size map to `date`, `close`, and `volume`; `high`, `low`, and `facevalue` are null. A valid no-trade result is one record with all six values null. On SIGINT (Ctrl+C), stop accepting new connections, drain in-flight work, and exit within 30 seconds, cancelling remaining work at the deadline. Package the service as a non-root distroless Debian image for Linux amd64 and arm64.
 
 ## Technical Context
 
 **Language/Version**: Rust stable, edition 2024; package MSRV is Rust 1.85 as declared in `Cargo.toml`.
 
-**Primary Dependencies**: Axum and Tokio for HTTP/async runtime; `reqwest` with Rustls for upstream HTTPS; Serde/serde_json for data mapping; SQLx SQLite for async durable cache access; Moka for bounded in-memory history hot-cache/singleflight; `chrono-tz` for exchange-local trade time conversion; `tracing` for structured logs.
+**Primary Dependencies**: Axum and Tokio for HTTP/async runtime; `reqwest` with Rustls for upstream HTTPS; Serde/serde_json for data mapping; SQLx SQLite for async durable history access; `chrono-tz` for exchange-local trade time conversion; `tracing` for structured logs.
 
-**Storage**: SQLite database at `EXCHANGE_API_HISTORY_CACHE_DB_PATH` (container default `/var/lib/exchange-api/history.sqlite3`) on a durable volume attached to each instance. Store one complete serialized history response per symbol with `fetched_at`, `expires_at`, and response byte count. Use a bounded SQLite backing store (64 MiB default logical response-payload capacity) and a bounded 64 MiB Moka hot cache, both with a 60-second default TTL. A hit is valid only when its expiry is in the future. Persist only after every ISS page and mapping step succeeds; quotes bypass both caches. SQLite read/write failures on the history path return a documented `503` service error. Use SQLite WAL on the instance-local mounted filesystem, not a volume concurrently shared across hosts.
+**Storage**: SQLite database at `EXCHANGE_API_HISTORY_CACHE_DB_PATH` (container default `/var/lib/exchange-api/history.sqlite3`) on a durable volume attached to each instance. Store validated records by provider, symbol, and date. Merge only after every ISS page and mapping step succeeds; retained records do not expire automatically. Quotes are fetched for each request and are not persisted. SQLite read/write failures on the history path return a documented `503` service error. Use SQLite WAL on the instance-local mounted filesystem, not a volume concurrently shared across hosts.
 
 **Testing**: Cargo unit and integration tests, mocked MOEX ISS fixtures for pagination, parsing, nulls, and failures, OpenAPI contract validation, and Docker validation. Verify SIGINT stops acceptance of new requests, allows in-flight requests to finish, and cancels work still active at the 30-second deadline. Build the Linux amd64 image successfully; amd64 runtime startup and route checks are outside acceptance. Smoke-start the arm64 image on a compatible runtime.
 
@@ -33,7 +33,7 @@ Build a Rust HTTP service exposing `GET /v1/moex/{SYMBOL}` for daily history and
 - **REST API Contracts First**: Pass after this design update. Both history and quote routes, response schemas, status codes, and error representation are defined in the OpenAPI contract.
 - **Documentation Is Part of Delivery**: Pass after this design update. OpenAPI and quickstart cover both routes, runtime configuration, dependencies, and operational validation.
 - **Clear Microservice Boundaries**: Pass. This is one independently deployable MOEX history service with a named upstream dependency.
-- **Compatibility and Change Management**: Pass. The route is versioned under `/v1`; changes must preserve this response or define migration/versioning.
+- **Compatibility and Change Management**: Pass. The service exposes only provider-qualified v2 history and quote routes.
 - **Practical Quality and Operability**: Pass with design requirements for actionable errors, structured logs including request duration and cache/storage outcome, health/readiness endpoints, fixture-backed checks, restart-persistence validation, bounded graceful SIGINT shutdown, the 10-client/10-request-per-second latency profile, successful Linux amd64 image build, arm64 runtime smoke validation, and final Semgrep/Trivy gates.
 - **Private-network security posture**: Pass. No application authentication is introduced by this feature. The service makes unauthenticated MOEX ISS requests and does not use subscriber credentials.
 
@@ -63,9 +63,8 @@ Dockerfile
 .dockerignore
 src/
 ├── main.rs                  # configuration, HTTP listener, app state, SIGINT shutdown coordination
-├── cache.rs                 # bounded TTL cache for complete ticker responses
 ├── cache_store.rs           # SQLite schema, expiry lookup, atomic upsert, pruning
-├── config.rs                # listener, upstream timeout, DB path, cache bounds/TTL
+├── config.rs                # listener, upstream timeout, and durable history DB path
 ├── http/
 │   ├── mod.rs
 │   ├── routes.rs            # history and quote routes, health/readiness

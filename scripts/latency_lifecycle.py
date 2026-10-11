@@ -7,7 +7,7 @@ import urllib.parse
 
 def request_once(base_url, provider, symbol):
     endpoint = urllib.parse.urlsplit(base_url)
-    path = f"/v1/{provider.lower()}/{symbol}"
+    path = f"/v2/history/{provider.lower()}/{symbol}"
     connection = http.client.HTTPConnection(endpoint.hostname, endpoint.port, timeout=40)
     connection.request("GET", path)
     response = connection.getresponse()

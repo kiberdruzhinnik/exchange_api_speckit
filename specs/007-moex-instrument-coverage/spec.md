@@ -31,11 +31,11 @@ A client can request a MOEX market benchmark such as IMOEX through the existing 
 
 **Acceptance Scenarios**:
 
-1. **Given** IMOEX has published daily history, **When** a client requests `/v1/moex/IMOEX`, **Then** the service returns its daily records in the established six-field JSON array format, ordered oldest to newest.
-2. **Given** MOEX has a current published IMOEX value, **When** a client requests `/v1/moex/IMOEX/quote`, **Then** the service returns one record representing the latest available benchmark value using the established quote response format.
+1. **Given** IMOEX has published daily history, **When** a client requests `/v2/history/moex/IMOEX`, **Then** the service returns its daily records in the established six-field JSON array format, ordered oldest to newest.
+2. **Given** MOEX has a current published IMOEX value, **When** a client requests `/v2/quote/moex/IMOEX`, **Then** the service returns one record representing the latest available benchmark value using the established quote response format.
 3. **Given** a valid benchmark has no available history or current value, **When** the corresponding route is requested, **Then** the service returns the established successful empty-history or no-quote response.
-4. **Given** a client uses the provider-qualified v2 routes for MOEX, **When** it requests IMOEX history or quote, **Then** it receives the same supported benchmark data and record contract as the corresponding v1 route.
-5. **Given** cached history exists for a newly supported symbol such as IMOEX or GLDRUB_TOM, **When** MOEX metadata confirms the symbol is recognized, **Then** the service migrates that history before requesting history and returns migrated records combined with fetched records according to the existing refresh behavior; if migration fails, it returns the history-store error and preserves the legacy cache row. A syntactically valid but unrecognized symbol returns HTTP 400 without migration, and a metadata request failure returns the standard MOEX dependency error without migration.
+4. **Given** a client uses the provider-qualified v2 routes for MOEX, **When** it requests IMOEX history or quote, **Then** it receives the same supported benchmark data and record contract as the shared provider-qualified v2 route.
+5. **Given** a legacy response-cache database contains history for a newly supported symbol, **When** the store opens, **Then** the legacy response-cache rows are discarded and are not imported. A later v2 history request fetches data from MOEX and retains it using the durable collection rules.
 
 ### User Story 2 - Retrieve currency instrument history and quote (Priority: P1)
 
@@ -47,10 +47,10 @@ A client can request MOEX-traded currency instruments, such as GLDRUB_TOM, throu
 
 **Acceptance Scenarios**:
 
-1. **Given** GLDRUB_TOM has daily history, **When** a client requests `/v1/moex/GLDRUB_TOM`, **Then** the service returns the available daily records in the established six-field JSON array format, ordered oldest to newest.
-2. **Given** GLDRUB_TOM has current market data, **When** a client requests `/v1/moex/GLDRUB_TOM/quote`, **Then** the service returns one record with the latest trade date and price and with `volume` representing the current number of trades at fetch time, not the latest trade quantity.
+1. **Given** GLDRUB_TOM has daily history, **When** a client requests `/v2/history/moex/GLDRUB_TOM`, **Then** the service returns the available daily records in the established six-field JSON array format, ordered oldest to newest.
+2. **Given** GLDRUB_TOM has current market data, **When** a client requests `/v2/quote/moex/GLDRUB_TOM`, **Then** the service returns one record with the latest trade date and price and with `volume` representing the current number of trades at fetch time, not the latest trade quantity.
 3. **Given** another supported MOEX currency instrument is identified by a symbol containing an underscore, **When** a client requests its history or quote, **Then** the symbol is accepted and handled as the requested instrument.
-4. **Given** a client uses the provider-qualified v2 routes for MOEX, **When** it requests GLDRUB_TOM history or quote, **Then** it receives the same supported currency data and record contract as the corresponding v1 route.
+4. **Given** a client uses the provider-qualified v2 routes for MOEX, **When** it requests GLDRUB_TOM history or quote, **Then** it receives the same supported currency data and record contract as the shared provider-qualified v2 route.
 
 ### User Story 3 - Preserve existing MOEX behavior for other instruments (Priority: P2)
 
@@ -83,8 +83,8 @@ Clients continue to retrieve equity and other already supported MOEX instruments
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST support MOEX equities, market benchmarks including IMOEX, and MOEX-traded currency instruments including GLDRUB_TOM through the existing MOEX history route `GET /v1/moex/{SYMBOL}`.
-- **FR-002**: The system MUST support benchmark and currency instruments through the existing MOEX quote route `GET /v1/moex/{SYMBOL}/quote`.
+- **FR-001**: The system MUST support MOEX equities, market benchmarks including IMOEX, and MOEX-traded currency instruments including GLDRUB_TOM through the existing MOEX history route `GET /v2/history/moex/{SYMBOL}`.
+- **FR-002**: The system MUST support benchmark and currency instruments through the existing MOEX quote route `GET /v2/quote/moex/{SYMBOL}`.
 - **FR-003**: After existing case and whitespace normalization, the system MUST accept newly supported benchmark and currency symbols made of one or more alphanumeric parts separated by single underscores, including `IMOEX` and `GLDRUB_TOM`. These symbols MUST NOT have a leading or trailing underscore or consecutive underscores. Existing supported symbols MUST retain their current validation behavior.
 - **FR-004**: Successful history responses MUST retain the existing JSON array contract with exactly `date`, `close`, `high`, `low`, `volume`, and `facevalue` fields and records ordered oldest to newest.
 - **FR-005**: History values MUST reflect MOEX's published daily data for the requested instrument. A field that is unavailable or inapplicable to that instrument MUST be represented as JSON `null`.
@@ -118,7 +118,7 @@ Clients continue to retrieve equity and other already supported MOEX instruments
 ## Assumptions
 
 - MOEX benchmarks and MOEX-traded currency instruments are MOEX instruments and belong under the existing `moex` provider; the CBR provider continues to represent official Bank of Russia rates.
-- The scope covers the existing MOEX v1 routes and corresponding provider-qualified v2 routes, without adding new public routes.
+- The scope covers only the provider-qualified v2 MOEX routes.
 - The established six-field market record remains the shared response contract; fields not supplied or not applicable for an instrument category are `null`.
 - Currency symbols with underscores are valid MOEX symbols; underscore support must not broaden acceptance of otherwise malformed symbols.
 - MOEX's latest published benchmark value is the meaningful equivalent of a current quote for a benchmark that has no executed trades.

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Exchange API v2 History and Quote Routes
   version: 2.0.0
-  description: Provider-qualified v2 routes. Existing v1 provider-specific routes remain available.
+  description: Provider-qualified history and quote routes for the supported providers.
 servers:
   - url: /
 paths:

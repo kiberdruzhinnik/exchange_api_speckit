@@ -15,9 +15,7 @@ Use this guide to validate the Bank of Russia history and quote routes after imp
 | Currency directory freshness | 60 seconds | In-process supported-currency list refresh interval; quote rate values are never cached. |
 | `EXCHANGE_API_LISTEN_ADDR` | `0.0.0.0:8080` | Shared service listen address. |
 | `EXCHANGE_API_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout. |
-| `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` | `60` | Shared history freshness period. |
-| `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` | `67108864` | Shared aggregate history-cache payload limit. |
-| `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Shared durable history-store path. |
+| `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Durable history-store path. |
 
 ## Local checks
 
@@ -37,15 +35,14 @@ EXCHANGE_API_HISTORY_CACHE_DB_PATH=./exchange-api-data/history.sqlite3 cargo run
 In another terminal, request history and a fresh quote:
 
 ```sh
-curl -i http://127.0.0.1:8080/v1/cbr/USD
-curl -i http://127.0.0.1:8080/v1/cbr/USD/quote
+curl -i http://127.0.0.1:8080/v2/history/cbr/USD
+curl -i http://127.0.0.1:8080/v2/quote/cbr/USD
 ```
 
-History returns all available rates in ascending date order. Each `close` is RUB per one currency unit: a CBR source value of 5 RUB for a nominal of 100 units becomes `0.05`; if `Value` or `Nominal` is missing, `close` is null. `facevalue` is the source nominal when available. CBR does not provide high, low, or volume, so these fields are null. Quote returns one latest-rate record and fetches rate data on every request. The supported-currency directory refreshes every 60 seconds. It intersects `XML_valFull.asp` identifiers with the codes in `XML_daily.asp?d=0`; rate data is not part of that cache. Invalid or unsupported symbols return HTTP 400 `invalid_symbol`; source failures, including CBR rate limits, return HTTP 502 `cbr_unavailable`; history-store failures return HTTP 503 `history_store_unavailable`. These use the same envelope and status categories as MOEX and SPBEX while preserving established upstream codes. Restart the service with the same database path before history TTL expiry to confirm persisted history remains available.
+History returns all available rates in ascending date order. Each `close` is RUB per one currency unit: a CBR source value of 5 RUB for a nominal of 100 units becomes `0.05`; if `Value` or `Nominal` is missing, `close` is null. `facevalue` is the source nominal when available. CBR does not provide high, low, or volume, so these fields are null. Quote returns one latest-rate record and fetches rate data on every request. The supported-currency directory refreshes every 60 seconds. It intersects `XML_valFull.asp` identifiers with the codes in `XML_daily.asp?d=0`; rate data is not part of that cache. Invalid or unsupported symbols return HTTP 400 `invalid_symbol`; source failures, including CBR rate limits, return HTTP 502 `cbr_unavailable`; history-store failures return HTTP 503 `history_store_unavailable`. These use the same envelope and status categories as MOEX and SPBEX while preserving established upstream codes. Restart the service with the same database path to confirm persisted history remains available.
 
 ## Production latency acceptance
 
-Build and run the local release binary against the production Bank of Russia XML service. This CBR harness consumes full bodies, schedules 10 requests per second on a fixed cadence, uses 10 concurrent clients, and reports actual issue rate, skipped requests, failures, and successful-response p95 separately for history-only, quote-only, and combined traffic. It separately probes history cold fetch, warm memory hit, and expiry refresh, then warms history before timed profiles so a slow cache fill does not invalidate the fixed-arrival run. Each quote reaches the source. Timed profiles must be shorter than the configured history TTL. A run below the requested rate or with skipped arrivals is invalid. CBR profiles must meet successful-response p95 under one second. The complete feature gate covers all six MOEX, SPBEX, and CBR history and quote routes; rerun all three provider harnesses after the shared-route refactor and require each route to pass.
 
 ```sh
 cargo build --release --locked

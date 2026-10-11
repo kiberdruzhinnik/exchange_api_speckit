@@ -59,7 +59,7 @@ async fn serves_gldrub_tom_history_from_its_primary_currency_board() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM")
+                .uri("/v2/history/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -88,7 +88,7 @@ async fn serves_gldrub_tom_history_from_its_primary_currency_board() {
 #[tokio::test]
 async fn serves_currency_quote_with_fetch_time_trade_count() {
     let (_, app) = app().await;
-    for path in ["/v1/moex/GLDRUB_TOM/quote", "/v2/quote/moex/GLDRUB_TOM"] {
+    for path in ["/v2/quote/moex/GLDRUB_TOM", "/v2/quote/moex/GLDRUB_TOM"] {
         let response = app
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -119,7 +119,7 @@ async fn returns_empty_currency_history_and_all_null_quote_when_no_trade_exists(
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM")
+                .uri("/v2/history/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -136,7 +136,7 @@ async fn returns_empty_currency_history_and_all_null_quote_when_no_trade_exists(
     let quote = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .uri("/v2/quote/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -163,7 +163,7 @@ async fn currency_quote_leaves_volume_null_when_numtrades_is_unavailable() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .uri("/v2/quote/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -189,7 +189,7 @@ async fn malformed_currency_quote_time_returns_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .uri("/v2/quote/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -209,7 +209,7 @@ async fn malformed_non_null_currency_last_returns_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .uri("/v2/quote/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -230,7 +230,7 @@ async fn malformed_non_null_currency_history_value_returns_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM")
+                .uri("/v2/history/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -245,7 +245,7 @@ async fn maps_currency_current_marketdata_failure_to_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/GLDRUB_TOM/quote")
+                .uri("/v2/quote/moex/GLDRUB_TOM")
                 .body(Body::empty())
                 .unwrap(),
         )

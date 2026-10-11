@@ -27,16 +27,15 @@ def request_once(url, route, symbol, client_id):
         return route, symbol, time.perf_counter() - started, issued_at, None, str(error)
 
 
-def read_cache_events(log_path, offset):
+def read_history_events(log_path, offset):
     if not log_path:
-        return offset, [], []
+        return offset, []
     with open(log_path, "rb") as log:
         log.seek(offset)
         contents = log.read()
         new_offset = log.tell()
     text = contents.decode("utf-8", errors="replace")
     source_fetches = []
-    outcomes = []
     for line in text.splitlines():
         if 'provider="CBR"' not in line:
             continue
@@ -45,32 +44,27 @@ def read_cache_events(log_path, offset):
             continue
         if 'phase="source_fetch"' in line:
             source_fetches.append(symbol.group(1))
-        elif 'history request completed' in line:
-            cache = re.search(r'cache="([a-z_]+)"', line)
-            if cache:
-                outcomes.append((symbol.group(1), cache.group(1)))
-    return new_offset, source_fetches, outcomes
+    return new_offset, source_fetches
 
 
 def issue_history_probe(args, symbol=None):
     symbol = symbol or args.symbols[0]
-    url = f"{args.base_url.rstrip('/')}/v1/cbr/{symbol}"
+    url = f"{args.base_url.rstrip('/')}/v2/history/cbr/{symbol}"
     result = request_once(url, "history", symbol, 0)
-    args.log_offset, source_fetches, outcomes = read_cache_events(
+    args.log_offset, source_fetches = read_history_events(
         args.server_log, args.log_offset
     )
-    return result, source_fetches, outcomes
+    return result, source_fetches
 
 
 def verify_incremental_history_lifecycle(args):
     probes = [issue_history_probe(args) for _ in range(3)]
     statuses_ok = all(row[0][4] is not None and 200 <= row[0][4] < 300 for row in probes)
-    source_fetches_ok = all(len(fetches) == 1 for _, fetches, _ in probes)
+    source_fetches_ok = all(len(fetches) == 1 for _, fetches in probes)
     verified = statuses_ok and source_fetches_ok
     print(
         f"history_incremental_lifecycle statuses={[row[0][4] for row in probes]} "
-        f"source_fetches={[len(fetches) for _, fetches, _ in probes]} "
-        f"refresh_outcomes={[outcomes for _, _, outcomes in probes]} verified={str(verified).lower()}",
+        f"source_fetches={[len(fetches) for _, fetches in probes]} verified={str(verified).lower()}",
         flush=True,
     )
     return verified
@@ -119,8 +113,7 @@ def run_stage(args, mode):
             next_client_id = (client_id + 1) % 10
             route = ("history" if slot % 2 == 0 else "quote") if mode == "combined" else mode
             symbol = args.symbols[slot % len(args.symbols)]
-            suffix = "" if route == "history" else "/quote"
-            url = f"{args.base_url.rstrip('/')}/v1/cbr/{symbol}{suffix}"
+            url = (f"{args.base_url.rstrip('/')}/v2/history/cbr/{symbol}" if route == "history" else f"{args.base_url.rstrip('/')}/v2/quote/cbr/{symbol}")
             future = pool.submit(request_once, url, route, symbol, client_id)
             pending[future] = client_id
             active_clients.add(client_id)
@@ -129,12 +122,10 @@ def run_stage(args, mode):
         for future in pending:
             results.append(future.result())
 
-    args.log_offset, source_fetches, cache_outcomes = read_cache_events(
+    args.log_offset, source_fetches = read_history_events(
         args.server_log, args.log_offset
     )
-    memory_hits = sum(outcome == "memory_hit" for _, outcome in cache_outcomes)
-    persistent_hits = sum(outcome == "persistent_hit" for _, outcome in cache_outcomes)
-    cache_verified = history_warmup_ok
+    history_population_ok = history_warmup_ok
 
     successes = [row for row in results if row[4] is not None and 200 <= row[4] < 300]
     errors = [row for row in results if row[4] is None or not 200 <= row[4] < 300]
@@ -161,8 +152,7 @@ def run_stage(args, mode):
     if mode in ("history", "combined"):
         print(
             f"profile={mode} history_source_fetches={len(source_fetches)} "
-            f"history_in_memory_hits={memory_hits} history_persistent_hits={persistent_hits} "
-            f"history_warmup_statuses={','.join(str(status) for status in warmup_statuses)}",
+            f"history_population_statuses={','.join(str(status) for status in warmup_statuses)}",
             flush=True,
         )
     route_ok = True
@@ -176,7 +166,7 @@ def run_stage(args, mode):
             route_ok = False
     for _, symbol, _, _, status, error in errors[:20]:
         print(f"error=symbol:{symbol} status:{status} detail:{error}", flush=True)
-    return valid_arrivals and route_ok and cache_verified
+    return valid_arrivals and route_ok and history_population_ok
 
 
 def main():

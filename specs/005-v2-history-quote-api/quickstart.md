@@ -38,7 +38,7 @@ Expected behavior:
 - Quote returns the selected provider's existing one-record current quote result.
 - Invalid provider values return HTTP 400 with `invalid_provider`; malformed or unsupported symbols retain the `invalid_symbol` behavior.
 - Upstream failures retain provider-specific HTTP 502 codes. History-store failures return HTTP 503.
-- Existing v1 routes continue to work, for example `/v1/moex/SBER` and `/v1/moex/SBER/quote`.
+- Only the provider-qualified v2 history and quote routes are registered.
 
 Clear one provider/symbol history collection with the configured admin key:
 
@@ -51,7 +51,7 @@ The operation returns HTTP 204 even when that cache entry did not exist. Missing
 
 ## Automated API and contract checks
 
-Run the Rust suite and verify it covers v2 provider selection, each history/quote response path, invalid provider and symbol errors, upstream/store errors, v1 compatibility, and both the feature contract and canonical OpenAPI contract:
+Run the Rust suite and verify it covers v2 provider selection, each history/quote response path, invalid provider and symbol errors, upstream/store errors, v2 route coverage, and both the feature contract and canonical OpenAPI contract:
 
 ```sh
 cargo test

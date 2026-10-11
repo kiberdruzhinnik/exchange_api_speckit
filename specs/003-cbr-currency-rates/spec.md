@@ -6,7 +6,7 @@
 
 **Status**: Completed
 
-**Input**: User description: "make another route /v1/cbr/<SYMBOL> which fetches history of currency from central bank of russia and /v1/cbr/<SYMBOL/quote which fetches current rate for today. <SYMBOL> must be one of supported currencies from central bank of russia, example: usd, cny, eur and etc."
+**Input**: User description: "make another route /v2/history/cbr/<SYMBOL> which fetches history of currency from central bank of russia and /v2/quote/cbr/<SYMBOL which fetches current rate for today. <SYMBOL> must be one of supported currencies from central bank of russia, example: usd, cny, eur and etc."
 
 ## Clarifications
 
@@ -20,7 +20,7 @@
 - Q: Should provider unification cover the public REST contract and common provider behavior, while retaining each provider’s quote meaning? → A: Unify the public REST contract and provider behavior, while retaining provider-specific quote semantics.
 - Q: For the shared REST contract, should all providers use the same symbol normalization, HTTP status categories, empty-history response, and no-quote response? → A: Yes. Trim and uppercase symbols; return 400 for invalid or unsupported symbols, 502 for upstream failures, and 503 for history-store failures; return `[]` for valid empty history and one all-null record for a successful no-quote result.
 - Q: Should shared runtime settings use one common naming scheme and remove the former MOEX-specific names rather than retain aliases? → A: Use a common naming scheme for shared settings and remove the former names without aliases.
-- Q: How should existing provider-specific upstream error codes be handled while standardizing the public error contract? → A: Preserve each provider’s existing upstream error code on its current `/v1` routes; standardize the JSON error envelope and HTTP status behavior so existing clients are not broken.
+- Q: How should existing provider-specific upstream error codes be handled while standardizing the public error contract? → A: Preserve each provider’s existing upstream error code on its v2 routes; standardize the JSON error envelope and HTTP status behavior so existing clients are not broken.
 - Q: Should the one-second p95 acceptance target apply to CBR routes only or to history and quote routes for all three providers? → A: The hard p95 target applies to all six MOEX, SPBEX, and CBR history and quote routes.
 - Q: What naming rule applies to application configuration environment variables? → A: Every application configuration environment variable MUST begin with `EXCHANGE_API_`, including provider-specific source and response-size settings.
 
@@ -36,7 +36,7 @@ A client requests the history for a currency code supported by the Bank of Russi
 
 **Acceptance Scenarios**:
 
-1. **Given** a supported currency with published rate history, **When** a client requests `/v1/cbr/{SYMBOL}`, **Then** the service returns an array of six-field rate records ordered from oldest to newest.
+1. **Given** a supported currency with published rate history, **When** a client requests `/v2/history/cbr/{SYMBOL}`, **Then** the service returns an array of six-field rate records ordered from oldest to newest.
 2. **Given** the official source expresses a rate for multiple units of a currency, **When** history is returned, **Then** each rate is normalized to Russian rubles for one unit.
 3. **Given** a supported currency has no history in the requested source data, **When** a client requests history, **Then** the service returns an empty JSON array.
 
@@ -50,7 +50,7 @@ A client requests the current Bank of Russia rate for a supported currency and r
 
 **Acceptance Scenarios**:
 
-1. **Given** the Bank of Russia has published a rate for the current date, **When** a client requests `/v1/cbr/{SYMBOL}/quote`, **Then** the service returns a one-element array with that date and normalized rate in the six-field record shape.
+1. **Given** the Bank of Russia has published a rate for the current date, **When** a client requests `/v2/quote/cbr/{SYMBOL}`, **Then** the service returns a one-element array with that date and normalized rate in the six-field record shape.
 2. **Given** no rate has been published for the current calendar date, **When** a client requests the quote, **Then** the service returns the latest published rate and its effective date.
 3. **Given** a supported currency has no available rate in a successful source response, **When** a client requests the quote, **Then** the service returns one record with all six fields set to null.
 
@@ -91,8 +91,8 @@ A client can distinguish invalid input from temporary source failures, and all p
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST expose currency rate history at `GET /v1/cbr/{SYMBOL}`.
-- **FR-002**: The system MUST expose the latest official currency rate at `GET /v1/cbr/{SYMBOL}/quote`.
+- **FR-001**: The system MUST expose currency rate history at `GET /v2/history/cbr/{SYMBOL}`.
+- **FR-002**: The system MUST expose the latest official currency rate at `GET /v2/quote/cbr/{SYMBOL}`.
 - **FR-003**: `SYMBOL` MUST identify a currency in the Bank of Russia's supported-currency list; codes MUST be accepted case-insensitively and normalized to uppercase.
 - **FR-004**: The system MUST retrieve official rates and supported currency identifiers from the Bank of Russia's public currency-rate service. The Bank of Russia documents daily rates and historical rate dynamics through its [official XML interface](https://www.cbr.ru/development/SXML/).
 - **FR-005**: History MUST return all daily rates available from the CBR source for the supported currency, from its earliest source-available date through the latest published date, ordered from oldest to newest, as an array of records with exactly `date`, `close`, `high`, `low`, `volume`, and `facevalue` fields.
@@ -113,9 +113,9 @@ A client can distinguish invalid input from temporary source failures, and all p
 - **FR-019**: When the service receives Ctrl+C (SIGINT), it MUST stop accepting new requests, allow in-flight work to finish, and terminate within 30 seconds. Any work still in flight at the deadline MUST be canceled.
 - **FR-020**: MOEX, SPBEX, and CBR MUST provide the same history and quote capabilities using normalized records and shared error outcomes; each provider MUST preserve its documented source mapping and quote meaning.
 - **FR-021**: The public history and quote routes for MOEX, SPBEX, and CBR MUST follow one shared REST contract for route pattern, six-field JSON record shape, array behavior, and JSON error envelope; provider-specific upstream mappings and quote semantics MUST remain documented.
-- **FR-022**: All providers MUST trim and uppercase symbols, return HTTP 400 for malformed or unsupported symbols, HTTP 502 for upstream failures, and HTTP 503 for history-store failures. Valid empty history MUST return `[]`; a successful quote lookup without a quote MUST return one record with all six fields null. Each provider MUST preserve its established upstream error code on its current `/v1` routes while using the shared JSON error envelope and status categories.
+- **FR-022**: All providers MUST trim and uppercase symbols, return HTTP 400 for malformed or unsupported symbols, HTTP 502 for upstream failures, and HTTP 503 for history-store failures. Valid empty history MUST return `[]`; a successful quote lookup without a quote MUST return one record with all six fields null. Each provider MUST preserve its established upstream error code on its v2 routes while using the shared JSON error envelope and status categories.
 - **FR-023**: Shared runtime settings for the listener, upstream timeout, history-cache freshness, capacity, and storage location MUST apply consistently to all providers. Provider-specific upstream source and response-size settings MAY vary by provider.
-- **FR-024**: Standardizing provider error behavior MUST NOT rename existing upstream error codes on current `/v1` routes; provider-specific codes MUST map to the common HTTP 502 upstream-failure category and standard JSON error envelope.
+- **FR-024**: Standardizing provider error behavior MUST NOT rename existing upstream error codes on v2 routes; provider-specific codes MUST map to the common HTTP 502 upstream-failure category and standard JSON error envelope.
 - **FR-025**: Every environment variable used to configure the application MUST begin with the `EXCHANGE_API_` prefix, including provider-specific upstream source and response-size settings. No application configuration variable may use a provider-only prefix or an unprefixed legacy name.
 
 ### Key Entities *(include if data involved)*
@@ -143,7 +143,7 @@ A client can distinguish invalid input from temporary source failures, and all p
 ## Assumptions
 
 - `CBR` refers to the Central Bank of Russia, officially named the Bank of Russia.
-- The canonical paths use `{SYMBOL}` without angle brackets; the quote path is `/v1/cbr/{SYMBOL}/quote`.
+- The canonical paths use `{SYMBOL}` without angle brackets; the quote path is `/v2/quote/cbr/{SYMBOL}`.
 - The user intends the `close` value to mean Russian rubles per one unit of foreign currency. Source rates expressed per multiple units are normalized to one unit, and the source nominal is exposed as `facevalue` when present.
 - The rate's source effective date is returned. On weekends, holidays, or before a new rate is published, the quote uses the latest available official rate and does not invent a rate for today's date.
 - Currency support is determined from the Bank of Russia's current public currency list rather than a hard-coded list, so changes to supported currencies are reflected.

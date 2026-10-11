@@ -49,7 +49,7 @@ async fn returns_latest_trade_as_one_history_shaped_record_and_fetches_each_time
     for route in [
         "/v2/quote/moex/SBER",
         "/v2/quote/moex/SBER",
-        "/v1/moex/SBER/quote",
+        "/v2/quote/moex/SBER",
     ] {
         let response = app
             .clone()
@@ -100,7 +100,7 @@ async fn returns_one_all_null_record_for_valid_empty_trade_block() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER/quote")
+                .uri("/v2/quote/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -140,7 +140,7 @@ async fn rejects_failed_trade_response_as_dependency_error() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER/quote")
+                .uri("/v2/quote/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -159,7 +159,7 @@ async fn rejects_malformed_trade_rows_as_dependency_error() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/SBER/quote")
+                .uri("/v2/quote/moex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -182,7 +182,7 @@ async fn rejects_unknown_symbols_without_requesting_trades() {
     let response = router(AppState::new(client))
         .oneshot(
             Request::builder()
-                .uri("/v1/moex/UNKNOWN/quote")
+                .uri("/v2/quote/moex/UNKNOWN")
                 .body(Body::empty())
                 .unwrap(),
         )

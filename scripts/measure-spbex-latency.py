@@ -61,7 +61,7 @@ def run_stage(args, mode):
                 route = mode
             symbol = args.symbols[slot % len(args.symbols)]
             suffix = "" if route == "history" else "/quote"
-            url = f"{args.base_url.rstrip('/')}/v1/spbex/{symbol}{suffix}"
+            url = (f"{args.base_url.rstrip('/')}/v2/history/spbex/{symbol}" if route == "history" else f"{args.base_url.rstrip('/')}/v2/quote/spbex/{symbol}")
             requests.append(pool.submit(issue, url, route, symbol, slot % client_count))
         results = [request.result() for request in requests]
     skipped_count = 0
@@ -121,7 +121,7 @@ def main():
     print("profile=10_clients target_total_rps=10 body_fully_read=true", flush=True)
     if args.profile == "lifecycle":
         if not run_lifecycle(args, "SPBEX"):
-            raise SystemExit("SPBEX history cache lifecycle verification failed")
+            raise SystemExit("SPBEX history lifecycle verification failed")
         return
     modes = ("history", "quote", "combined") if args.profile == "all" else (args.profile,)
     for mode in modes:

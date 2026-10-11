@@ -20,7 +20,7 @@ const DIRECTORY_PATH: &str = "/scripts/XML_valFull.asp";
 const HISTORY_PATH: &str = "/scripts/XML_dynamic.asp";
 const DAILY_PATH: &str = "/scripts/XML_daily.asp";
 
-fn source(server: &MockServer, store: Option<CacheStore>, ttl: Duration) -> axum::Router {
+fn source(server: &MockServer, store: Option<CacheStore>) -> axum::Router {
     let moex = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(1)).unwrap();
     let spbex = SpbexClient::new(
         &format!("{}/api/", server.uri()),
@@ -35,10 +35,8 @@ fn source(server: &MockServer, store: Option<CacheStore>, ttl: Duration) -> axum
     )
     .unwrap();
     let state = match store {
-        Some(store) => {
-            AppState::with_all_services_and_store(moex, spbex, cbr, ttl, 1024 * 1024, store)
-        }
-        None => AppState::with_all_services(moex, spbex, cbr, ttl, 1024 * 1024),
+        Some(store) => AppState::with_all_services_and_store(moex, spbex, cbr, store),
+        None => AppState::with_all_services(moex, spbex, cbr),
     };
     router(state)
 }
@@ -77,18 +75,18 @@ fn latest_mock(body: &'static str) -> Mock {
 }
 
 #[tokio::test]
-async fn history_returns_normalized_sorted_six_field_records_and_reuses_cache() {
+async fn history_returns_normalized_sorted_six_field_records_and_fetches_each_request() {
     let server = MockServer::start().await;
     directory_mock().expect(1).mount(&server).await;
     currency_list_mock().mount(&server).await;
-    history_mock().expect(1).mount(&server).await;
-    let app = source(&server, None, Duration::from_secs(30));
+    history_mock().expect(2).mount(&server).await;
+    let app = source(&server, None);
 
     for (index, symbol) in ["usd", "USD"].into_iter().enumerate() {
         let route = if index == 0 {
             format!("/v2/history/cbr/{symbol}")
         } else {
-            format!("/v1/cbr/{symbol}")
+            format!("/v2/history/cbr/{symbol}")
         };
         let response = app
             .clone()
@@ -111,7 +109,7 @@ async fn history_returns_normalized_sorted_six_field_records_and_reuses_cache() 
         }
         assert_eq!(value[2]["close"], Value::Null);
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 4);
 }
 
 #[tokio::test]
@@ -119,10 +117,10 @@ async fn unsupported_currency_returns_standard_400_error() {
     let server = MockServer::start().await;
     directory_mock().mount(&server).await;
     currency_list_mock().mount(&server).await;
-    let response = source(&server, None, Duration::from_secs(1))
+    let response = source(&server, None)
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/XYZ")
+                .uri("/v2/history/cbr/XYZ")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -146,12 +144,12 @@ async fn persists_history_across_store_reopen() {
     directory_mock().expect(2).mount(&server).await;
     currency_list_mock().mount(&server).await;
     history_mock().expect(2).mount(&server).await;
-    let store = CacheStore::open(&path, 1024 * 1024).await.unwrap();
-    let first = source(&server, Some(store), Duration::from_secs(30));
+    let store = CacheStore::open(&path).await.unwrap();
+    let first = source(&server, Some(store));
     let first_response = first
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD")
+                .uri("/v2/history/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -159,12 +157,12 @@ async fn persists_history_across_store_reopen() {
         .unwrap();
     assert_eq!(first_response.status(), StatusCode::OK);
 
-    let reopened = CacheStore::open(&path, 1024 * 1024).await.unwrap();
-    let second = source(&server, Some(reopened), Duration::from_secs(30));
+    let reopened = CacheStore::open(&path).await.unwrap();
+    let second = source(&server, Some(reopened));
     let second_response = second
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD")
+                .uri("/v2/history/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -179,11 +177,10 @@ async fn store_with_insert_failure(path: &Path) -> CacheStore {
         .filename(path)
         .create_if_missing(true);
     let pool = SqlitePool::connect_with(options).await.unwrap();
-    sqlx::query("CREATE TABLE history_cache (symbol TEXT PRIMARY KEY NOT NULL, response_body BLOB NOT NULL, fetched_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, response_bytes INTEGER NOT NULL)").execute(&pool).await.unwrap();
     sqlx::query("CREATE TABLE history_collections (provider TEXT NOT NULL, symbol TEXT NOT NULL, latest_record_date TEXT, last_full_refresh_at INTEGER, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY(provider, symbol))").execute(&pool).await.unwrap();
     sqlx::query("CREATE TRIGGER fail_history_insert BEFORE INSERT ON history_collections BEGIN SELECT RAISE(ABORT, 'test store failure'); END").execute(&pool).await.unwrap();
     pool.close().await;
-    CacheStore::open(path, 1024 * 1024).await.unwrap()
+    CacheStore::open(path).await.unwrap()
 }
 
 #[tokio::test]
@@ -195,10 +192,10 @@ async fn history_store_failure_returns_503() {
     directory_mock().mount(&server).await;
     currency_list_mock().mount(&server).await;
     history_mock().mount(&server).await;
-    let response = source(&server, Some(store), Duration::from_secs(30))
+    let response = source(&server, Some(store))
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD")
+                .uri("/v2/history/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -215,8 +212,8 @@ async fn quote_fetches_latest_rate_on_every_request_and_returns_shared_shape() {
         .expect(3)
         .mount(&server)
         .await;
-    let app = source(&server, None, Duration::from_secs(30));
-    for route in ["/v2/quote/cbr/USD", "/v1/cbr/USD/quote"] {
+    let app = source(&server, None);
+    for route in ["/v2/quote/cbr/USD", "/v2/quote/cbr/USD"] {
         let response = app
             .clone()
             .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
@@ -248,10 +245,10 @@ async fn quote_without_source_rate_returns_one_all_null_record() {
     latest_mock(include_str!("fixtures/cbr/quote-empty.xml"))
         .mount(&server)
         .await;
-    let response = source(&server, None, Duration::from_secs(1))
+    let response = source(&server, None)
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD/quote")
+                .uri("/v2/quote/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -283,10 +280,10 @@ async fn successful_empty_history_returns_empty_array() {
         )
         .mount(&server)
         .await;
-    let response = source(&server, None, Duration::from_secs(1))
+    let response = source(&server, None)
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD")
+                .uri("/v2/history/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -314,10 +311,10 @@ async fn malformed_upstream_history_returns_standard_502_error() {
         )
         .mount(&server)
         .await;
-    let response = source(&server, None, Duration::from_secs(1))
+    let response = source(&server, None)
         .oneshot(
             Request::builder()
-                .uri("/v1/cbr/USD")
+                .uri("/v2/history/cbr/USD")
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -2,7 +2,6 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use bytes::Bytes;
 use exchange_api::{
     AppState, cache_store::CacheStore, domain::DailyMarketRecord, http::router,
     moex::client::MoexClient,
@@ -30,12 +29,11 @@ fn record(symbol_value: f64) -> DailyMarketRecord {
 
 async fn app(key: Option<&str>) -> (tempfile::TempDir, AppState, axum::Router) {
     let directory = tempfile::tempdir().unwrap();
-    let store = CacheStore::open(directory.path().join("history.sqlite3"), 1024 * 1024)
+    let store = CacheStore::open(directory.path().join("history.sqlite3"))
         .await
         .unwrap();
     let client = MoexClient::new("http://127.0.0.1:1/", Duration::from_secs(1)).unwrap();
-    let state = AppState::with_store(client, Duration::from_secs(60), 1024 * 1024, store)
-        .with_admin_api_key(key.map(str::to_owned));
+    let state = AppState::with_store(client, store).with_admin_api_key(key.map(str::to_owned));
     let router = router(state.clone());
     (directory, state, router)
 }
@@ -89,7 +87,7 @@ async fn requires_key_before_validating_target_and_fails_closed_when_unconfigure
 }
 
 #[tokio::test]
-async fn clears_only_targeted_provider_symbol_across_all_cache_layers() {
+async fn clears_only_targeted_durable_provider_symbol() {
     let (_directory, state, router) = app(Some("secret")).await;
     let store = state.cache_store.as_ref().unwrap();
     store
@@ -104,24 +102,6 @@ async fn clears_only_targeted_provider_symbol_across_all_cache_layers() {
         .merge_records("cbr", "SBER", &[record(30.0)], true, 10)
         .await
         .unwrap();
-    store
-        .put("MOEX:SBER", &Bytes::from_static(b"legacy"), Duration::ZERO)
-        .await
-        .unwrap();
-    state
-        .history_cache
-        .get_or_fetch("MOEX:SBER".into(), || async {
-            Ok(Bytes::from_static(b"memory-sber"))
-        })
-        .await
-        .unwrap();
-    state
-        .history_cache
-        .get_or_fetch("MOEX:GAZP".into(), || async {
-            Ok(Bytes::from_static(b"memory-gazp"))
-        })
-        .await
-        .unwrap();
 
     let response = router
         .clone()
@@ -133,14 +113,8 @@ async fn clears_only_targeted_provider_symbol_across_all_cache_layers() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     assert!(store.collection("moex", "SBER").await.unwrap().is_none());
-    assert!(store.get("MOEX:SBER").await.unwrap().is_none());
-    assert!(state.history_cache.get("MOEX:SBER").await.is_none());
     assert!(store.collection("moex", "GAZP").await.unwrap().is_some());
     assert!(store.collection("cbr", "SBER").await.unwrap().is_some());
-    assert_eq!(
-        state.history_cache.get("MOEX:GAZP").await.unwrap(),
-        Bytes::from_static(b"memory-gazp")
-    );
 
     let repeat = router
         .oneshot(clear_request(
@@ -229,7 +203,7 @@ async fn cleared_history_is_fetched_and_retained_again_on_next_history_request()
         .await;
 
     let directory = tempfile::tempdir().unwrap();
-    let store = CacheStore::open(directory.path().join("history.sqlite3"), 1024 * 1024)
+    let store = CacheStore::open(directory.path().join("history.sqlite3"))
         .await
         .unwrap();
     store
@@ -237,8 +211,7 @@ async fn cleared_history_is_fetched_and_retained_again_on_next_history_request()
         .await
         .unwrap();
     let client = MoexClient::new(&format!("{}/", upstream.uri()), Duration::from_secs(2)).unwrap();
-    let state = AppState::with_store(client, Duration::from_secs(60), 1024 * 1024, store)
-        .with_admin_api_key(Some("secret".to_owned()));
+    let state = AppState::with_store(client, store).with_admin_api_key(Some("secret".to_owned()));
     let app = router(state.clone());
 
     let cleared = app

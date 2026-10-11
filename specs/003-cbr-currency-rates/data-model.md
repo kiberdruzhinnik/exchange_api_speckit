@@ -28,6 +28,6 @@ History contains zero or more records ordered oldest to newest. A successful emp
 
 The quote response is an array containing exactly one record using the same six fields as history. It represents the latest official rate fetched at request time. When the source has no rate row for the supported currency, all six fields are JSON `null`. On a non-publication day, return the latest published row and its actual effective date.
 
-## Cache Identity and Lifecycle
+## Durable History and Directory Lifecycle
 
-History cache identity is `CBR:{NORMALIZED_SYMBOL}`. Successful, fully validated history is cached using the service's existing history TTL and durable SQLite store. Expired entries are refreshed before being returned. Quote rates are never cached. Supported-currency metadata may use a short-lived local cache, but it is distinct from quote data and must be refreshed so changes in the official directory are reflected.
+Validated daily rates are retained in SQLite by normalized `(provider, symbol)` and date. Each history request fetches records after the latest retained date, merges them, and returns the complete ordered collection. Records do not expire automatically. Quote rates are fetched for each request and are not persisted. Supported-currency directory metadata may use a short-lived local cache, distinct from quote data, and is refreshed so changes in the official directory are reflected.

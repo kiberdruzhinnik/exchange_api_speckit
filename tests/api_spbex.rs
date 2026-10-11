@@ -19,7 +19,7 @@ use wiremock::{
 const PATH: &str = "/api/reader/marketdata/charts/chistory";
 const HISTORY: &str = r#"[{"bar_unixtime":1364169600,"close":73.35,"high":75.05,"low":73.21},{"bar_unixtime":1364256000,"close":74.15,"high":74.55,"low":73.90}]"#;
 
-fn app(server: &MockServer, ttl: Duration) -> axum::Router {
+fn app(server: &MockServer) -> axum::Router {
     let moex = MoexClient::new(&format!("{}/", server.uri()), Duration::from_secs(1)).unwrap();
     let spbex = SpbexClient::new(
         &format!("{}/api/", server.uri()),
@@ -27,7 +27,7 @@ fn app(server: &MockServer, ttl: Duration) -> axum::Router {
         4096,
     )
     .unwrap();
-    router(AppState::with_services(moex, spbex, ttl, 1024 * 1024))
+    router(AppState::with_services(moex, spbex))
 }
 
 fn chart(body: &'static str) -> Mock {
@@ -37,15 +37,15 @@ fn chart(body: &'static str) -> Mock {
 }
 
 #[tokio::test]
-async fn history_returns_six_fields_sorted_and_uses_history_cache() {
+async fn history_returns_six_fields_sorted_and_fetches_each_request() {
     let server = MockServer::start().await;
-    chart(HISTORY).expect(1).mount(&server).await;
-    let app = app(&server, Duration::from_secs(30));
+    chart(HISTORY).expect(2).mount(&server).await;
+    let app = app(&server);
     for (index, symbol) in ["sber", "SBER"].into_iter().enumerate() {
         let route = if index == 0 {
             format!("/v2/history/spbex/{symbol}")
         } else {
-            format!("/v1/spbex/{symbol}")
+            format!("/v2/history/spbex/{symbol}")
         };
         let response = app
             .clone()
@@ -62,11 +62,11 @@ async fn history_returns_six_fields_sorted_and_uses_history_cache() {
         assert_eq!(records[0]["volume"], Value::Null);
         assert_eq!(records[0]["facevalue"], 1.0);
     }
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
 
 #[tokio::test]
-async fn history_excludes_current_date_candle_from_response_and_cache_but_quote_returns_it() {
+async fn history_excludes_current_date_candle_but_quote_returns_it() {
     let server = MockServer::start().await;
     let today = chrono::Utc::now()
         .date_naive()
@@ -80,17 +80,17 @@ async fn history_excludes_current_date_candle_from_response_and_cache_but_quote_
     Mock::given(method("GET"))
         .and(path(PATH))
         .respond_with(ResponseTemplate::new(200).set_body_string(feed))
-        .expect(2)
+        .expect(3)
         .mount(&server)
         .await;
-    let app = app(&server, Duration::from_secs(30));
+    let app = app(&server);
 
     for _ in 0..2 {
         let response = app
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/v1/spbex/SBER")
+                    .uri("/v2/history/spbex/SBER")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -112,7 +112,7 @@ async fn history_excludes_current_date_candle_from_response_and_cache_but_quote_
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER/quote")
+                .uri("/v2/quote/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -128,17 +128,17 @@ async fn history_excludes_current_date_candle_from_response_and_cache_but_quote_
         chrono::Utc::now().format("%Y-%m-%dT00:00:00Z").to_string()
     );
     assert_eq!(quote[0]["close"], 99.9);
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
 
 #[tokio::test]
 async fn history_returns_empty_array_for_successful_empty_feed() {
     let server = MockServer::start().await;
     chart("[]").mount(&server).await;
-    let response = app(&server, Duration::from_secs(1))
+    let response = app(&server)
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER")
+                .uri("/v2/history/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -157,8 +157,8 @@ async fn history_returns_empty_array_for_successful_empty_feed() {
 async fn quote_reaches_upstream_on_every_request_and_returns_latest_candle_shape() {
     let server = MockServer::start().await;
     chart(HISTORY).expect(2).mount(&server).await;
-    let app = app(&server, Duration::from_secs(30));
-    for route in ["/v2/quote/spbex/SBER", "/v1/spbex/SBER/quote"] {
+    let app = app(&server);
+    for route in ["/v2/quote/spbex/SBER", "/v2/quote/spbex/SBER"] {
         let response = app
             .clone()
             .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
@@ -201,12 +201,12 @@ async fn quote_expands_lookback_and_empty_full_range_returns_one_null_record() {
         })
         .mount(&server)
         .await;
-    let router_app = app(&server, Duration::from_secs(30));
+    let router_app = app(&server);
     let response = router_app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER/quote")
+                .uri("/v2/quote/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -238,10 +238,10 @@ async fn quote_expands_lookback_and_empty_full_range_returns_one_null_record() {
 
     let empty_server = MockServer::start().await;
     chart("[]").mount(&empty_server).await;
-    let response = app(&empty_server, Duration::from_secs(30))
+    let response = app(&empty_server)
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER/quote")
+                .uri("/v2/quote/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -261,7 +261,7 @@ async fn quote_expands_lookback_and_empty_full_range_returns_one_null_record() {
 }
 
 #[tokio::test]
-async fn persistent_history_is_reused_after_cache_state_restarts() {
+async fn persistent_history_survives_store_restart() {
     let server = MockServer::start().await;
     chart(HISTORY).expect(2).mount(&server).await;
     let dir = tempdir().unwrap();
@@ -274,18 +274,12 @@ async fn persistent_history_is_reused_after_cache_state_restarts() {
             4096,
         )
         .unwrap();
-        let store = CacheStore::open(&db, 1024 * 1024).await.unwrap();
-        let app = router(AppState::with_services_and_store(
-            moex,
-            spbex,
-            Duration::from_secs(30),
-            1024 * 1024,
-            store,
-        ));
+        let store = CacheStore::open(&db).await.unwrap();
+        let app = router(AppState::with_services_and_store(moex, spbex, store));
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/v1/spbex/SBER")
+                    .uri("/v2/history/spbex/SBER")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -300,18 +294,12 @@ async fn persistent_history_is_reused_after_cache_state_restarts() {
         4096,
     )
     .unwrap();
-    let store = CacheStore::open(&db, 1024 * 1024).await.unwrap();
-    let app = router(AppState::with_services_and_store(
-        moex,
-        spbex,
-        Duration::from_secs(30),
-        1024 * 1024,
-        store,
-    ));
+    let store = CacheStore::open(&db).await.unwrap();
+    let app = router(AppState::with_services_and_store(moex, spbex, store));
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER")
+                .uri("/v2/history/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -328,7 +316,7 @@ async fn history_store_read_and_write_failures_return_503() {
         chart(HISTORY).mount(&server).await;
         let dir = tempdir().unwrap();
         let db = dir.path().join("history.sqlite3");
-        let store = CacheStore::open(&db, 1024 * 1024).await.unwrap();
+        let store = CacheStore::open(&db).await.unwrap();
         let admin = SqlitePool::connect_with(
             SqliteConnectOptions::new()
                 .filename(&db)
@@ -352,17 +340,11 @@ async fn history_store_read_and_write_failures_return_503() {
             4096,
         )
         .unwrap();
-        let app = router(AppState::with_services_and_store(
-            moex,
-            spbex,
-            Duration::from_secs(30),
-            1024 * 1024,
-            store,
-        ));
+        let app = router(AppState::with_services_and_store(moex, spbex, store));
         let route = if fail_write {
             "/v2/history/spbex/SBER"
         } else {
-            "/v1/spbex/SBER"
+            "/v2/history/spbex/SBER"
         };
         let response = app
             .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
@@ -383,12 +365,12 @@ async fn history_store_read_and_write_failures_return_503() {
 #[tokio::test]
 async fn malformed_symbol_and_source_failures_have_distinct_statuses() {
     let server = MockServer::start().await;
-    let app = app(&server, Duration::from_secs(1));
+    let app = app(&server);
     let malformed = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/bad%20symbol")
+                .uri("/v2/history/spbex/bad%20symbol")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -399,7 +381,7 @@ async fn malformed_symbol_and_source_failures_have_distinct_statuses() {
     let failed = app
         .oneshot(
             Request::builder()
-                .uri("/v1/spbex/SBER")
+                .uri("/v2/history/spbex/SBER")
                 .body(Body::empty())
                 .unwrap(),
         )

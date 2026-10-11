@@ -29,18 +29,18 @@ Expected outcomes:
 - Equity and currency quote `volume` reports fetch-time `NUMTRADES`, not the latest trade quantity (`QTY`). A missing source field remains `null`; an empty or unavailable current value remains one all-null quote record. This quote rule does not change daily-history volume mapping.
 - Primary-board effective-date intervals require valid dates with `primary_from` on or before `primary_through`; endpoints are inclusive, open-ended ends and gaps are accepted, and overlaps are rejected as unusable metadata. Fixture tests cover malformed, reversed, and overlapping intervals, accepted gaps/open ends, and selection on both interval boundary dates.
 - Newly supported symbols accept alphanumeric parts separated by single underscores after normalization; leading, trailing, and repeated underscores are rejected without changing existing symbols' validation behavior.
-- A cached legacy `MOEX:{SYMBOL}` response is migrated only after symbol syntax validation and successful MOEX metadata recognition, but before collection lookup or history retrieval. The first history response includes migrated records combined with fetched records under existing merge rules. Route-level tests verify unknown symbols return HTTP 400 without migration, metadata failures return the MOEX dependency error without migration, and recognized symbols migrate before history retrieval while reusing the preflight metadata. If migration fails, the route returns the history-store error and the legacy row remains intact.
-- Existing SBER responses, invalid-symbol errors, upstream errors, and v1/v2 route compatibility remain unchanged.
+- Legacy serialized response-cache rows are dropped when the store opens and are not imported. Existing durable history collections remain intact; new v2 history requests fetch from MOEX and retain validated records.
+- Existing SBER responses, invalid-symbol errors, and upstream errors remain unchanged on v2 routes.
 
 ## Live ISS validation
 
 Start the service with `cargo run` from the repository root. Then request:
 
 ```sh
-curl -sS http://localhost:8080/v1/moex/IMOEX
-curl -sS http://localhost:8080/v1/moex/IMOEX/quote
-curl -sS http://localhost:8080/v1/moex/GLDRUB_TOM
-curl -sS http://localhost:8080/v1/moex/GLDRUB_TOM/quote
+curl -sS http://localhost:8080/v2/history/moex/IMOEX
+curl -sS http://localhost:8080/v2/quote/moex/IMOEX
+curl -sS http://localhost:8080/v2/history/moex/GLDRUB_TOM
+curl -sS http://localhost:8080/v2/quote/moex/GLDRUB_TOM
 curl -sS http://localhost:8080/v2/history/moex/IMOEX
 curl -sS http://localhost:8080/v2/quote/moex/GLDRUB_TOM
 ```
@@ -49,7 +49,7 @@ Compare available values against the matching MOEX ISS market and board, not aga
 
 ## Persistence and performance validation
 
-Use a temporary configured history database for migration checks. Seed a legacy `MOEX:IMOEX` or `MOEX:GLDRUB_TOM` response and arrange for the metadata and history fixtures to return a recognized instrument and additional records. On the first recognized history request, verify the response and normalized MOEX collection contain both migrated and fetched records. Verify malformed and syntactically valid but unrecognized symbols do not trigger migration; simulate metadata failure and verify it returns the MOEX dependency error without migration. Restart the service and verify the dated records remain available. Inject a failed migration and verify the source row remains intact and the route returns the history-store error.
+Use a temporary database containing durable MOEX collections and legacy response-cache tables. Reopen it and verify the durable collection remains while legacy response-cache tables are dropped. Request history for a newly supported symbol and verify the service fetches and stores its records.
 
 Measure the established MOEX workload of 10 concurrent clients at 10 requests per second. Report the initial full-history fetch separately; run the latency acceptance profile after histories are populated. Quotes must cause a fresh ISS read on each request.
 

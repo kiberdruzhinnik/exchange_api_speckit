@@ -17,9 +17,7 @@ Optional environment variables:
 | `EXCHANGE_API_SPBEX_MAX_RESPONSE_BYTES` | `16777216` | Maximum bytes accepted from one chart-feed response. |
 | `EXCHANGE_API_LISTEN_ADDR` | `0.0.0.0:8080` | Shared service listen address. |
 | `EXCHANGE_API_REQUEST_TIMEOUT_SECS` | `15` | Shared upstream request timeout, including SPBEX. |
-| `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` | `60` | Existing history freshness period. |
-| `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` | `67108864` | Existing aggregate history-cache payload limit. |
-| `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Existing SQLite history-store path. |
+| `EXCHANGE_API_HISTORY_CACHE_DB_PATH` | `/var/lib/exchange-api/history.sqlite3` | Durable SQLite history-store path. |
 
 ## Local checks
 
@@ -39,11 +37,11 @@ EXCHANGE_API_HISTORY_CACHE_DB_PATH=./exchange-api-data/history.sqlite3 cargo run
 In another terminal, request both routes (replace `SYMBOL` with a known SPBEX listing):
 
 ```sh
-curl -i http://127.0.0.1:8080/v1/spbex/SYMBOL
-curl -i http://127.0.0.1:8080/v1/spbex/SYMBOL/quote
+curl -i http://127.0.0.1:8080/v2/history/spbex/SYMBOL
+curl -i http://127.0.0.1:8080/v2/quote/spbex/SYMBOL
 ```
 
-History returns an ascending array of six-field records dated before the current UTC calendar date; candles dated today are excluded, even from cached or persisted history payloads. `volume` is null and `facevalue` is `1`. Empty successful history is `[]`. Quote returns one latest-candle record, may include a candle dated today, and must contact the feed on every request. It starts with a 1-day range and expands the range when empty until it finds a candle or reaches the Unix epoch; only an empty result across the full available range produces one record with nullable market fields. Invalid symbols or explicit upstream rejection return HTTP 400, other upstream failures return HTTP 502, and history-store failures return HTTP 503. Restart the service with the same DB path and request history again before the cache TTL expires to confirm persistence; after expiry, the source is fetched again.
+History returns an ascending array of six-field records dated before the current UTC calendar date; candles dated today are excluded from retained history. `volume` is null and `facevalue` is `1`. Empty successful history is `[]`. Quote returns one latest-candle record, may include a candle dated today, and must contact the feed on every request. It starts with a 1-day range and expands the range when empty until it finds a candle or reaches the Unix epoch; only an empty result across the full available range produces one record with nullable market fields. Invalid symbols or explicit upstream rejection return HTTP 400, other upstream failures return HTTP 502, and history-store failures return HTTP 503. Restart the service with the same DB path and request history again to confirm the durable collection persists and incremental refresh returns the full history.
 
 ## Production latency acceptance
 
@@ -80,7 +78,6 @@ The SPBEX client's TLS verifier uses the Russian Trusted Root CA as an additiona
 
 ## Final shared-provider latency acceptance
 
-On 2026-10-09, the final shared-handler binary was measured against production SPBEX using SBER and 10 concurrent clients at 10 total requests per second. Each timed profile scheduled and issued all 1,200 requests with zero skips and zero upstream errors. History-only p95 was 0.003834 s, quote-only p95 with the final 16-request upstream limit was 0.751137 s, and combined overall p95 was 0.611771 s (history 0.002233 s, quote 0.912929 s). The combined result improved from an initial 1.225619-second quote p95 after increasing the upstream concurrency allowance from eight to sixteen. The history cache was warmed before timed profiles and configured with a 300-second test TTL to avoid an expiry refresh interrupting fixed-arrival measurements.
 
 Final shared-provider quality gates on 2026-10-09 passed: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (81 tests), `cargo test --test shutdown` (3 tests), and the Linux amd64 Docker image build. Semgrep reported zero findings and Trivy reported zero fixable High/Critical image vulnerabilities; detailed final scan results are recorded in the CBR quickstart.
 

@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: CBR Currency Rates API
-  version: 1.0.0
+  version: 2.0.0
   description: Provider-specific view of the canonical Exchange API contract. CBR rates are normalized to Russian rubles per one currency unit.
 servers:
   - url: /
 paths:
-  /v1/cbr/{SYMBOL}:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1cbr~1{SYMBOL}'
-  /v1/cbr/{SYMBOL}/quote:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1cbr~1{SYMBOL}~1quote'
+  /v2/history/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1history~1{PROVIDER}~1{SYMBOL}'
+  /v2/quote/{PROVIDER}/{SYMBOL}:
+    $ref: '../../contracts/openapi.yaml#/paths/~1v2~1quote~1{PROVIDER}~1{SYMBOL}'

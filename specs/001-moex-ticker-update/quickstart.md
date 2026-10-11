@@ -9,12 +9,11 @@ mkdir -p ./data
 EXCHANGE_API_HISTORY_CACHE_DB_PATH=./data/history.sqlite3 cargo run
 ```
 
-`EXCHANGE_API_LISTEN_ADDR` selects the shared listen address (default `0.0.0.0:8080`). `EXCHANGE_API_HISTORY_CACHE_DB_PATH` selects the history cache database path (container default `/var/lib/exchange-api/history.sqlite3`). `EXCHANGE_API_REQUEST_TIMEOUT_SECS` sets the shared upstream request timeout (default 15 seconds). `EXCHANGE_API_HISTORY_CACHE_TTL_SECS` sets history freshness/cache TTL (default 60 seconds). `EXCHANGE_API_HISTORY_CACHE_MAX_BYTES` sets the maximum shared cached response payload bytes (default 64 MiB). `EXCHANGE_API_MOEX_MAX_ISS_RESPONSE_BYTES` bounds each ISS response (default 4 MiB), `EXCHANGE_API_MOEX_MAX_HISTORY_BYTES` bounds accumulated history (default 64 MiB), and `EXCHANGE_API_MOEX_ISS_BASE_URL` can point to a compatible ISS endpoint in fixture-backed tests. Every application configuration variable uses the `EXCHANGE_API_*` prefix.
 
 Request daily history:
 
 ```sh
-curl http://localhost:8080/v1/moex/SBER
+curl http://localhost:8080/v2/history/moex/SBER
 ```
 
 The response is an ascending JSON array of daily records. `date` is the MOEX trading date at midnight UTC; unavailable market values may be `null`; `facevalue` is populated from the current board-specific `LOTSIZE` for the primary board selected on that trading date. ISS history is requested without subscriber credentials and is limited to data MOEX exposes without a subscription. A recognized ticker with no history returns `[]`; malformed or unsupported symbols return `400`; upstream denial, timeout, malformed JSON, or unusable history returns `502`; history-store failures return `503`.
@@ -22,7 +21,7 @@ The response is an ascending JSON array of daily records. `date` is the MOEX tra
 Request the latest executed trade:
 
 ```sh
-curl http://localhost:8080/v1/moex/SBER/quote
+curl http://localhost:8080/v2/quote/moex/SBER
 ```
 
 The service fetches the latest trade from MOEX ISS for each request and does not reuse a prior quote. The response is a one-element array with the same six fields as history: trade time (ISO 8601 UTC), price, and size map to `date`, `close`, and `volume`; `high`, `low`, and `facevalue` are null. A recognized ticker with a valid ISS response containing no trades returns `200` with one record whose six values are null. An ISS failure or malformed trade response returns `502`.
@@ -97,7 +96,6 @@ Verify that the build produces both image platforms. AMD64 validation is build-o
 
 ## Final shared-provider latency acceptance
 
-On 2026-10-09, the final shared-handler binary was measured against production MOEX ISS using SBER and 10 concurrent clients at 10 total requests per second. Each timed profile scheduled and issued all 1,200 requests with zero skips and zero upstream errors. History-only p95 was 0.002227 s, quote-only p95 was 0.398614 s, and combined overall p95 was 0.290081 s (history 0.004045 s, quote 0.363149 s). The history run used a warmed cache and a 300-second benchmark TTL so expiry did not interrupt the timed profile; cold, warm, and expiry behavior is separately covered by the CBR lifecycle probe and provider persistence tests. An initial profile that crossed the 60-second expiry was invalid and excluded.
 
 Final shared-provider quality gates on 2026-10-09 passed: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (81 tests), `cargo test --test shutdown` (3 tests), and the Linux amd64 Docker image build. Semgrep reported zero findings and Trivy reported zero fixable High/Critical image vulnerabilities; detailed final scan results are recorded in the CBR quickstart.
 

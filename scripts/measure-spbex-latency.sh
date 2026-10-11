@@ -47,7 +47,7 @@ curl --silent --fail http://127.0.0.1:18080/health/ready >/dev/null || {
 if [[ "$benchmark_profile" != "lifecycle" ]]; then
   IFS=',' read -r -a warm_symbols <<< "$benchmark_symbols"
   for symbol in "${warm_symbols[@]}"; do
-    curl --silent --fail "http://127.0.0.1:18080/v1/spbex/$symbol" >/dev/null
+    curl --silent --fail "http://127.0.0.1:18080/v2/history/spbex/$symbol" >/dev/null
   done
 fi
 

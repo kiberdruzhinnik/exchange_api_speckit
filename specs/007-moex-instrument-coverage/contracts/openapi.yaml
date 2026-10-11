@@ -9,10 +9,6 @@ info:
 servers:
   - url: /
 paths:
-  /v1/moex/{SYMBOL}:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1moex~1{SYMBOL}'
-  /v1/moex/{SYMBOL}/quote:
-    $ref: '../../contracts/openapi.yaml#/paths/~1v1~1moex~1{SYMBOL}~1quote'
   /v2/history/{PROVIDER}/{SYMBOL}:
     $ref: '../../contracts/openapi.yaml#/paths/~1v2~1history~1{PROVIDER}~1{SYMBOL}'
   /v2/quote/{PROVIDER}/{SYMBOL}:

@@ -77,7 +77,7 @@ def run_stage(args, mode):
                 route = mode
             symbol = args.symbols[slot % len(args.symbols)]
             suffix = "" if route == "history" else "/quote"
-            url = f"{args.base_url.rstrip('/')}/v1/moex/{symbol}{suffix}"
+            url = (f"{args.base_url.rstrip('/')}/v2/history/moex/{symbol}" if route == "history" else f"{args.base_url.rstrip('/')}/v2/quote/moex/{symbol}")
             future = pool.submit(request_once, url, route, symbol, client_id)
             pending[future] = client_id
             active_clients.add(client_id)
@@ -142,7 +142,7 @@ def main():
     print("profile=10_clients target_total_rps=10 body_fully_read=true", flush=True)
     if args.profile == "lifecycle":
         if not run_lifecycle(args, "MOEX"):
-            raise SystemExit("MOEX history cache lifecycle verification failed")
+            raise SystemExit("MOEX history lifecycle verification failed")
         return
     modes = ("history", "quote", "combined") if args.profile == "all" else (args.profile,)
     for mode in modes:

@@ -49,15 +49,8 @@ For traded instruments, `volume` is the current number of trades reported when t
 
 The quote request is built from the resolved engine, market, and current primary board. Index and currency quotes use the category's current-marketdata response; existing traded instruments retain the established trades-based request. The quote request is not stored in history. If the source has no valid current value, use the established one-record all-null result. Invalid or incomplete data remains an upstream error.
 
-## Persistent History Collection and Legacy Cache
+## Persistent History Collection
 
-The existing collection identity remains `(provider, symbol)`, here `("moex", normalized_symbol)`. Records are unique by date and merged atomically under the established history-refresh rules.
+The collection identity is `(provider, symbol)`, here `("moex", normalized_symbol)`. Records are unique by date and merged atomically under the history-refresh rules. Legacy serialized response-cache data is discarded during store upgrade; it is not imported. Existing durable collections remain available.
 
-| Legacy item | Type | Migration rule |
-|---|---|---|
-| Legacy cache key | string | Exact MOEX key `MOEX:{normalized_symbol}`. |
-| Legacy response body | JSON array of six-field records | Parse fully before import; malformed data is a store migration failure, not an empty history. |
-| Current history collection | collection plus dated rows | For a metadata-recognized symbol, create or merge before history retrieval and before the first request reads its latest date. Unknown symbols and metadata failures do not trigger migration. |
-| Migration state | existing collection presence / migration bookkeeping | Import is idempotent; pre-existing collection data is already migrated. Keep the legacy row until durable merge succeeds. |
-
-One MOEX instrument has zero or more daily market records and at most one quote result per request. Multiple boards may relate to one symbol, but each history date is attributed to the primary board selected for that date. On the first history request whose metadata resolves successfully, migration precedes collection lookup and history retrieval; the response includes migrated records combined with fetched records under the existing merge behavior. Failed source requests do not alter committed history; failed migration returns the documented history-store error and preserves the legacy source row.
+One MOEX instrument has zero or more daily market records and at most one quote result per request. Multiple boards may relate to one symbol, but each history date is attributed to the primary board selected for that date. Failed source requests do not alter committed history.

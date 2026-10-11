@@ -6,15 +6,15 @@
 
 ## Summary
 
-Add SPBEX daily history and latest-candle quote endpoints to the existing Rust/Axum service. Use the public SPBEX chart feed, map its daily OHLC values into the existing six-field record contract (`volume: null`, `facevalue: 1`), persist successful history responses through the existing durable history cache, and fetch uncached quote data on every request. Document the routes and errors in an SPBEX OpenAPI contract and quickstart.
+Add SPBEX daily history and latest-candle quote endpoints to the existing Rust/Axum service. Use the public SPBEX chart feed, map its daily OHLC values into the existing six-field record contract (`volume: null`, `facevalue: 1`), retain validated history records in the durable history collection, and fetch uncached quote data on every request. Document the routes and errors in an SPBEX OpenAPI contract and quickstart.
 
 ## Technical Context
 
 **Language/Version**: Rust 2024, MSRV 1.85; repository toolchain 1.89.
 
-**Primary Dependencies**: Existing Axum/Tokio HTTP stack, reqwest with Rustls, Serde/serde_json, chrono, Moka, SQLx SQLite, tracing, and wiremock for tests. No new runtime dependency is expected. The SPBEX reqwest client adds the official Russian Trusted Root CA to its own verifier to validate the SPBEX TLS chain.
+**Primary Dependencies**: Existing Axum/Tokio HTTP stack, reqwest with Rustls, Serde/serde_json, chrono, SQLx SQLite, tracing, and wiremock for tests. No new runtime dependency is expected. The SPBEX reqwest client adds the official Russian Trusted Root CA to its own verifier to validate the SPBEX TLS chain.
 
-**Storage**: Reuse `HistoryCache` and `CacheStore` with exchange-qualified keys such as `SPBEX:SBER`; use the existing history TTL and byte limits. Quote results bypass both cache layers.
+**Storage**: Retain validated history in SQLite by `(provider, symbol, date)` with no automatic expiry. Fetch quotes on every request and do not persist them.
 
 **Testing**: Cargo unit and integration tests, wiremock-based upstream fixtures, Axum route tests, OpenAPI schema validation, restart-persistence checks, Docker image build, and live latency acceptance with the local release binary and production SPBEX source.
 

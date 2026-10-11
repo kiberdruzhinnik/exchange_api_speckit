@@ -13,6 +13,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            tag_suffix: ""
+          - platform: linux/arm64
+            tag_suffix: -arm64
     permissions:
       contents: read
       packages: write
@@ -41,11 +49,27 @@ jobs:
             type=ref,event=tag
             type=sha
 
+      - name: Add architecture suffix to image tags
+        id: tags
+        env:
+          TAG_SUFFIX: ${{ matrix.tag_suffix }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          delimiter="$(openssl rand -hex 16)"
+          {
+            echo "tags<<$delimiter"
+            while IFS= read -r tag || [ -n "$tag" ]; do
+              [ -z "$tag" ] || printf '%s%s\n' "$tag" "$TAG_SUFFIX"
+            done < <(printf '%s' "$TAGS")
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish container
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: Dockerfile
+          platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

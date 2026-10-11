@@ -3,11 +3,12 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path, State},
-    http::{Response, StatusCode, header::CONTENT_TYPE},
+    http::{HeaderMap, Response, StatusCode, header::CONTENT_TYPE},
     routing::get,
 };
 use serde::Serialize;
 use std::{sync::Arc, time::Instant};
+use subtle::ConstantTimeEq;
 use tower_http::trace::TraceLayer;
 
 fn select_provider(
@@ -243,6 +244,41 @@ async fn v2_quote(
     serve_quote(provider, symbol).await
 }
 
+async fn clear_history_cache(
+    State(state): State<AppState>,
+    Path((provider_name, input_symbol)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let Some(expected_key) = state.admin_api_key.as_deref() else {
+        return Err(ApiError::AdminUnavailable);
+    };
+    let supplied_key = headers
+        .get("X-API-Key")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if !bool::from(supplied_key.as_bytes().ct_eq(expected_key.as_bytes())) {
+        return Err(ApiError::Unauthorized);
+    }
+
+    let (provider, namespace) = select_provider(&state.providers, &provider_name)?;
+    let symbol = provider
+        .normalize_symbol(&input_symbol)
+        .ok_or(ApiError::InvalidSymbol)?;
+    let provider_key = namespace.to_ascii_lowercase();
+    if let Some(store) = &state.cache_store {
+        store
+            .clear_history(&provider_key, &symbol)
+            .await
+            .map_err(|error| ApiError::Store(error.to_string()))?;
+    }
+    state
+        .history_cache
+        .invalidate(&format!("{namespace}:{symbol}"))
+        .await;
+    tracing::info!(provider = %provider_key, symbol = %symbol, "history cache cleared");
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn map_history_provider_error(
     code: &'static str,
     error: crate::provider::ProviderError,
@@ -292,6 +328,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/cbr/{symbol}/quote", get(cbr_quote))
         .route("/v2/history/{provider}/{symbol}", get(v2_history))
         .route("/v2/quote/{provider}/{symbol}", get(v2_quote))
+        .route(
+            "/v2/admin/cache/clear/{provider}/{symbol}",
+            axum::routing::delete(clear_history_cache),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

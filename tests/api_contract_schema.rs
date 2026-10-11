@@ -154,6 +154,22 @@ fn canonical_contract_has_all_six_routes_and_shared_envelope() {
             ["examples"]["invalidProvider"]["value"]["error"]["code"],
         "invalid_provider"
     );
+    let clear = &contract["paths"]["/v2/admin/cache/clear/{PROVIDER}/{SYMBOL}"]["delete"];
+    assert!(clear.is_mapping(), "missing admin cache-clear DELETE route");
+    assert_eq!(
+        clear["security"][0]["AdminApiKey"]
+            .as_sequence()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        contract["components"]["securitySchemes"]["AdminApiKey"]["name"],
+        "X-API-Key"
+    );
+    assert!(clear["responses"]["204"].is_mapping());
+    assert!(clear["responses"]["401"].is_mapping());
+    assert!(clear["responses"]["503"].is_mapping());
 
     let feature: Value = serde_yaml::from_str(include_str!(
         "../specs/005-v2-history-quote-api/contracts/openapi-v2.yaml"

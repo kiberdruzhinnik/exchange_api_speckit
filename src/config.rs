@@ -1,8 +1,9 @@
 use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppConfig {
     pub log_color: bool,
+    pub admin_api_key: Option<String>,
     pub listen_addr: SocketAddr,
     pub upstream_timeout: Duration,
     pub moex_iss_base_url: String,
@@ -35,6 +36,10 @@ impl AppConfig {
                 )
             })
             .unwrap_or(true);
+
+        let admin_api_key = get("EXCHANGE_API_ADMIN_API_KEY")
+            .and_then(|value| value.into_string().ok())
+            .filter(|value| !value.is_empty());
 
         let listen_addr = get("EXCHANGE_API_LISTEN_ADDR")
             .and_then(|value| value.into_string().ok())
@@ -168,6 +173,7 @@ impl AppConfig {
 
         Ok(Self {
             log_color,
+            admin_api_key,
             listen_addr,
             upstream_timeout: Duration::from_secs(timeout_seconds),
             moex_iss_base_url,
@@ -195,6 +201,7 @@ mod tests {
     #[test]
     fn shared_and_provider_settings_have_common_defaults() {
         let config = AppConfig::from_lookup(|_| None).unwrap();
+        assert_eq!(config.admin_api_key, None);
         assert_eq!(config.listen_addr.to_string(), "0.0.0.0:8080");
         assert_eq!(config.upstream_timeout, Duration::from_secs(15));
         assert_eq!(
@@ -213,6 +220,18 @@ mod tests {
         assert!(config.moex_iss_base_url.contains("iss.moex.com"));
         assert!(config.spbex_api_base_url.contains("spbexchange.ru"));
         assert!(config.cbr_api_base_url.contains("cbr.ru"));
+    }
+
+    #[test]
+    fn admin_api_key_is_optional_and_empty_values_disable_it() {
+        let mut values = HashMap::new();
+        values.insert("EXCHANGE_API_ADMIN_API_KEY", OsString::from("secret-value"));
+        let configured = AppConfig::from_lookup(|key| values.get(key).cloned()).unwrap();
+        assert_eq!(configured.admin_api_key.as_deref(), Some("secret-value"));
+
+        values.insert("EXCHANGE_API_ADMIN_API_KEY", OsString::from(""));
+        let empty = AppConfig::from_lookup(|key| values.get(key).cloned()).unwrap();
+        assert_eq!(empty.admin_api_key, None);
     }
 
     #[test]
@@ -301,7 +320,9 @@ mod tests {
         );
 
         let values = HashMap::from([("EXCHANGE_API_HISTORY_CACHE_TTL_SECS", "60")]);
-        let error = AppConfig::from_lookup(|key| values.get(key).map(OsString::from)).unwrap_err();
+        let error = AppConfig::from_lookup(|key| values.get(key).map(OsString::from))
+            .err()
+            .unwrap();
         assert!(error.contains("has been removed"));
     }
 

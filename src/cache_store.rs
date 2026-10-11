@@ -211,6 +211,37 @@ impl CacheStore {
             .fetch_all(&self.pool).await.map(|rows: Vec<(String, String, Option<i64>, i64, Option<i64>)>| rows.into_iter().map(|(p,s,last,fail,next)|(p,s,last,fail.max(0) as u32,next)).collect())
     }
 
+    /// Remove one provider/symbol history collection and its matching legacy cache rows.
+    pub async fn clear_history(&self, provider: &str, symbol: &str) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM history_collections WHERE provider=? AND symbol=?")
+            .bind(provider)
+            .bind(symbol)
+            .execute(&mut *tx)
+            .await?;
+
+        let legacy_keys = sqlx::query_scalar::<_, String>("SELECT symbol FROM history_cache")
+            .fetch_all(&mut *tx)
+            .await?
+            .into_iter()
+            .filter(|key| {
+                legacy_identity(key).is_some_and(|(legacy_provider, legacy_symbol)| {
+                    legacy_provider == provider && legacy_symbol == symbol
+                })
+            })
+            .collect::<Vec<_>>();
+        for key in legacy_keys {
+            sqlx::query("DELETE FROM history_cache WHERE symbol=?")
+                .bind(key)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        self.changed.notify_one();
+        Ok(())
+    }
+
     pub async fn merge_records(
         &self,
         provider: &str,

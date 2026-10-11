@@ -4,6 +4,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
+    #[error("admin API key is missing or invalid")]
+    Unauthorized,
+    #[error("admin cache endpoint is not configured")]
+    AdminUnavailable,
     #[error("provider is unsupported")]
     InvalidProvider,
     #[error("symbol is malformed or unsupported")]
@@ -44,6 +48,16 @@ struct ErrorDetail {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let (status, code, message) = match self {
+            Self::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "A valid X-API-Key header is required".to_owned(),
+            ),
+            Self::AdminUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "admin_api_key_unconfigured",
+                "The administrative endpoint is not configured".to_owned(),
+            ),
             Self::InvalidProvider => (
                 StatusCode::BAD_REQUEST,
                 "invalid_provider",

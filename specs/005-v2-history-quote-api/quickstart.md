@@ -15,6 +15,10 @@ EXCHANGE_API_LISTEN_ADDR=127.0.0.1:8080 cargo run
 
 Configure any provider source and persistent history settings as required by the existing service deployment.
 
+To enable the administrative history-cache clear operation, configure `EXCHANGE_API_ADMIN_API_KEY` through the deployment's secret manager. If it is unset or empty, the service still starts and the admin endpoint returns HTTP 503. Send the key only in the `X-API-Key` header; never place it in a URL.
+
+For Docker Compose, export `EXCHANGE_API_ADMIN_API_KEY` from the deployment secret manager before starting Compose. The Compose service forwards it when present and leaves the admin route disabled when it is absent; do not commit the secret to the Compose file or a checked-in `.env` file.
+
 ## Validate the v2 routes
 
 Use supported provider-symbol pairs. The provider path segment is lowercase and selects exactly one adapter.
@@ -35,6 +39,15 @@ Expected behavior:
 - Invalid provider values return HTTP 400 with `invalid_provider`; malformed or unsupported symbols retain the `invalid_symbol` behavior.
 - Upstream failures retain provider-specific HTTP 502 codes. History-store failures return HTTP 503.
 - Existing v1 routes continue to work, for example `/v1/moex/SBER` and `/v1/moex/SBER/quote`.
+
+Clear one provider/symbol history collection with the configured admin key:
+
+```sh
+curl -i -X DELETE -H "X-API-Key: $EXCHANGE_API_ADMIN_API_KEY" \
+  http://127.0.0.1:8080/v2/admin/cache/clear/moex/SBER
+```
+
+The operation returns HTTP 204 even when that cache entry did not exist. Missing or incorrect keys return 401; an unset server key returns 503. A successful deletion removes the selected pair's retained history, and a later history request repopulates it from the provider.
 
 ## Automated API and contract checks
 

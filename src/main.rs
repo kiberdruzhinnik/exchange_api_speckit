@@ -38,7 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Duration::from_secs(60),
         config.history_cache_max_bytes,
         store,
-    );
+    )
+    .with_admin_api_key(config.admin_api_key.clone());
     let app = router(state.clone());
     let listener = TcpListener::bind(config.listen_addr).await?;
 

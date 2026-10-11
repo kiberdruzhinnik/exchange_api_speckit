@@ -191,6 +191,59 @@ async fn failed_transaction_preserves_existing_rows_and_refresh_metadata() {
 }
 
 #[tokio::test]
+async fn clears_only_the_requested_collection_and_legacy_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite3");
+    let store = CacheStore::open(&path, 1024).await.unwrap();
+    store
+        .merge_records(
+            "moex",
+            "SBER",
+            &[record("2026-10-01T00:00:00Z", 10.0)],
+            true,
+            10,
+        )
+        .await
+        .unwrap();
+    store
+        .merge_records(
+            "moex",
+            "GAZP",
+            &[record("2026-10-01T00:00:00Z", 20.0)],
+            true,
+            10,
+        )
+        .await
+        .unwrap();
+    store
+        .merge_records(
+            "cbr",
+            "SBER",
+            &[record("2026-10-01T00:00:00Z", 30.0)],
+            true,
+            10,
+        )
+        .await
+        .unwrap();
+    store
+        .put("MOEX:SBER", &Bytes::from_static(b"[]"), Duration::ZERO)
+        .await
+        .unwrap();
+    store
+        .put("MOEX:GAZP", &Bytes::from_static(b"[]"), Duration::ZERO)
+        .await
+        .unwrap();
+
+    store.clear_history("moex", "SBER").await.unwrap();
+    assert!(store.collection("moex", "SBER").await.unwrap().is_none());
+    assert!(store.get("MOEX:SBER").await.unwrap().is_none());
+    assert!(store.collection("moex", "GAZP").await.unwrap().is_some());
+    assert!(store.collection("cbr", "SBER").await.unwrap().is_some());
+    assert!(store.get("MOEX:GAZP").await.unwrap().is_some());
+    store.clear_history("moex", "SBER").await.unwrap();
+}
+
+#[tokio::test]
 async fn imports_exact_moex_legacy_key_once_and_defers_it_during_startup_migration() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("history.sqlite3");

@@ -30,6 +30,7 @@ pub struct AppState {
     pub providers: Providers,
     pub history_cache: cache::HistoryCache,
     pub cache_store: Option<cache_store::CacheStore>,
+    pub admin_api_key: Option<Arc<str>>,
 }
 
 impl AppState {
@@ -127,6 +128,7 @@ impl AppState {
             providers,
             history_cache: cache::HistoryCache::with_store(ttl, max_bytes, store.clone()),
             cache_store: Some(store),
+            admin_api_key: None,
         }
     }
 
@@ -149,6 +151,12 @@ impl AppState {
             providers,
             history_cache: cache::HistoryCache::new(ttl, max_bytes),
             cache_store: None,
+            admin_api_key: None,
         }
+    }
+
+    pub fn with_admin_api_key(mut self, key: Option<String>) -> Self {
+        self.admin_api_key = key.map(Arc::<str>::from);
+        self
     }
 }

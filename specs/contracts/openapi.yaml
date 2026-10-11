@@ -266,7 +266,31 @@ paths:
           $ref: '#/components/responses/InvalidV2PathParameter'
         '502':
           $ref: '#/components/responses/ProviderUnavailable'
+  /v2/admin/cache/clear/{PROVIDER}/{SYMBOL}:
+    delete:
+      operationId: clearProviderSymbolHistoryCache
+      summary: Clear cached history for one provider symbol
+      description: Removes the selected provider/symbol history collection and matching legacy cache entries. A later history request can fetch and retain the history again. Configure EXCHANGE_API_ADMIN_API_KEY to enable this operation.
+      security:
+        - AdminApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '204':
+          description: Cache cleared or no cached entry existed.
+        '400':
+          $ref: '#/components/responses/InvalidV2PathParameter'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '503':
+          $ref: '#/components/responses/AdminUnavailable'
 components:
+  securitySchemes:
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
   parameters:
     Provider:
       name: PROVIDER
@@ -380,6 +404,33 @@ components:
               type: string
               description: Client-actionable message that does not expose internal diagnostics.
   responses:
+    AdminUnauthorized:
+      description: Missing or incorrect X-API-Key header (HTTP 401).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: unauthorized
+              message: A valid X-API-Key header is required
+    AdminUnavailable:
+      description: The admin API key is not configured or the persistent history store is unavailable (HTTP 503).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            keyNotConfigured:
+              value:
+                error:
+                  code: admin_api_key_unconfigured
+                  message: The administrative endpoint is not configured
+            storeUnavailable:
+              value:
+                error:
+                  code: history_store_unavailable
+                  message: Ticker history is temporarily unavailable
     InvalidV2PathParameter:
       description: Provider or symbol path value is invalid (HTTP 400).
       content:

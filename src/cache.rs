@@ -64,6 +64,10 @@ impl HistoryCache {
         }
     }
 
+    pub async fn invalidate(&self, key: &str) {
+        self.entries.invalidate(key).await;
+    }
+
     pub async fn get_or_fetch<F, Fut>(
         &self,
         key: String,
@@ -217,5 +221,23 @@ mod tests {
             assert_eq!(result.1, CacheOutcome::Miss);
             assert_eq!(calls.load(Ordering::SeqCst), expected_call);
         }
+    }
+
+    #[tokio::test]
+    async fn invalidates_only_the_requested_key() {
+        let cache = HistoryCache::new(Duration::from_secs(60), 1024);
+        for key in ["MOEX:SBER", "MOEX:GAZP"] {
+            cache
+                .get_or_fetch(key.to_owned(), || async { Ok(Bytes::from_static(b"[]")) })
+                .await
+                .unwrap();
+        }
+
+        cache.invalidate("MOEX:SBER").await;
+        assert!(cache.get("MOEX:SBER").await.is_none());
+        assert_eq!(
+            cache.get("MOEX:GAZP").await.unwrap(),
+            Bytes::from_static(b"[]")
+        );
     }
 }
